@@ -1,0 +1,30 @@
+# Plugin zips are published as GitHub Release assets (tag: plugins-api13),
+# not committed to the repo. Delete these two lines if you'd rather track them in git.
+plugins/*.zip
+plugins/**/*.zip
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*~
+
+# Scratch / temp
+*.log
+*.tmp
+*.bak
+tmp/
+temp/
