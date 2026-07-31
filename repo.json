@@ -780,5 +780,31 @@
     "DownloadLinkUpdate": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/QoLBar-2.3.3.8.zip",
     "IconUrl": "https://raw.githubusercontent.com/cycleapple/DalamudPlugins-TW-API13-Extended/main/icons/QoLBar.png",
     "AcceptsFeedback": false
+  },
+  {
+    "Author": "UnknownX",
+    "Name": "ReAction",
+    "InternalName": "ReAction",
+    "IconUrl": "https://raw.githubusercontent.com/cycleapple/DalamudPlugins-TW-API13-Extended/main/icons/ReAction.png",
+    "AssemblyVersion": "1.3.4.4",
+    "TestingAssemblyVersion": "1.3.4.4",
+    "Description": "提供技能佇列、熱鍵列與戰鬥操作相關的多項便利調整。",
+    "Punchline": "戰鬥操作便利調整。",
+    "ApplicableVersion": "any",
+    "RepoUrl": "https://github.com/cycleapple/ReAction/tree/api13-tw",
+    "Tags": ["combat", "action", "queue", "utility"],
+    "CategoryTags": ["jobs", "utility"],
+    "DalamudApiLevel": 13,
+    "TestingDalamudApiLevel": 13,
+    "LoadRequiredState": 0,
+    "LoadSync": false,
+    "CanUnloadAsync": false,
+    "LoadPriority": 0,
+    "IsHide": false,
+    "IsTestingExclusive": false,
+    "DownloadLinkInstall": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/ReAction-1.3.4.4.zip",
+    "DownloadLinkTesting": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/ReAction-1.3.4.4.zip",
+    "DownloadLinkUpdate": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/ReAction-1.3.4.4.zip",
+    "AcceptsFeedback": false
   }
 ]
