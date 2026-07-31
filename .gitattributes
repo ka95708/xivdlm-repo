@@ -1,0 +1,11 @@
+# core.autocrlf=true would check repo.json out as CRLF; tools that append to it
+# write LF, and the resulting mixed endings make git diff the entire file.
+# Pin text files to LF in the working tree so diffs stay minimal.
+*.json text eol=lf
+*.md   text eol=lf
+*.lua  text eol=lf
+.gitattributes text eol=lf
+.gitignore     text eol=lf
+
+# Plugin archives are binary; never touch their contents.
+*.zip binary
