@@ -336,8 +336,8 @@
     "Author": "Fragile, MistyDai",
     "Name": "MissFisher",
     "InternalName": "MissFisher",
-    "AssemblyVersion": "1.6.5.12",
-    "TestingAssemblyVersion": "1.6.5.12",
+    "AssemblyVersion": "1.6.5.11",
+    "TestingAssemblyVersion": "1.6.5.11",
     "Description": "API13 期間釋出的釣魚輔助工具。台服版本移除了上游建置保護程式所加入的到期檢查，包含啟動時與每日重新驗證的流程。",
     "Punchline": "專注於釣魚的輔助插件。",
     "ApplicableVersion": "any",
@@ -352,9 +352,9 @@
     "IsHide": false,
     "IsTestingExclusive": false,
     "IconUrl": "https://missfisher-1331276814.cos.ap-guangzhou.myqcloud.com/MissFisherIcon128.png",
-    "DownloadLinkInstall": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/MissFisher-1.6.5.12.zip",
-    "DownloadLinkTesting": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/MissFisher-1.6.5.12.zip",
-    "DownloadLinkUpdate": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/MissFisher-1.6.5.12.zip",
+    "DownloadLinkInstall": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/MissFisher-1.6.5.11.zip",
+    "DownloadLinkTesting": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/MissFisher-1.6.5.11.zip",
+    "DownloadLinkUpdate": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/MissFisher-1.6.5.11.zip",
     "AcceptsFeedback": false
   },
   {
