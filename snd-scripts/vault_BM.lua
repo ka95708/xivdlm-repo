@@ -7,11 +7,11 @@
     - vnavmesh            (自動尋路移動)
 
   使用說明:
-    1) 使用強力守護
-    2) 乙太複製DD職能
-    3) 在任務搜尋器選好「聖教中樞伊修加爾德教皇廳」、勾選「解除限制」與「等級同步」
-    4) 設定循環次數，修改 LOOP_COUNT = (你想要打幾次副本)
-    5) 啟動腳本
+    1) 設定循環次數，修改 LOOP_COUNT = (你想要打幾次副本)
+
+  腳本流程:
+    [開場一次] 施放強力守護 → 勾「解除限制」+「等級同步」→ 選定副本 (id = 34)
+    [每輪循環] 檢查耐久 → 排隊進場 → 跑循環 → 退本
 
   必備技能:
     No.12 怒髮衝冠
@@ -41,8 +41,17 @@ local MOVE_TIMEOUT    = 60    -- 單段路徑最長等待秒數 (有 IPC 時)
 local MOVE_FALLBACK   = 12    -- 無 IPC 時每段移動的固定等待秒數
 local REPAIR_THRESHOLD = 20   -- 任一裝備耐久低於此 % 就「修理全部」(自助修理,需身上有暗物質)
 
+-- 自動選本
+local DUTY_NAME   = "聖教中樞伊修加爾德教皇廳"  -- 要打的副本名 (需與遊戲內完全一致或為其片段)
+local DUTY_CFC_ID = 34     -- ContentFinderCondition RowId (教皇廳 = 34);設 nil 則按 DUTY_NAME 查表
+local WANT_UNRESTRICTED = true   -- 解除限制
+local WANT_LEVEL_SYNC   = true   -- 等級同步
+local WANT_MIN_IL       = false  -- 最低裝等
+local WANT_SILENCE_ECHO = false  -- 無視增益效果
+
 -- Buff StatusId
-local STATUS_MOON_FLUTE = 2498   -- 鬥爭本能 buff
+local STATUS_MOON_FLUTE   = 2498   -- 鬥爭本能 buff
+local STATUS_MIGHTY_GUARD = 1719   -- 強力守護 buff (若一直上不去,請確認此 id)
 
 
 ----------------------------------------------------------------
@@ -149,11 +158,16 @@ end
 local function isCasting() return _cond(27) end
 
 -- 反覆施放技能,直到 buff 上身或超過次數
---   流程:下指令 → 等詠唱結束 (最多 castTime 秒) → 看 buff 有沒有上 → 沒上重試
-local function castUntilStatus(action, statusId, maxTries, castTime, gap)
+--   流程:下指令 → 等詠唱結束 (最多 castTime 秒) → 輪詢 settle 秒等 buff 上身 → 沒上才重試
+--
+--   ※ settle 很重要:強力守護 / 鬥爭本能 這類技能,buff 要一下才會掛上 StatusList。
+--     若太早判定失敗而重放,強力守護會被切掉(姿態技再按一次 = 取消),
+--     結果來回開關永遠上不去。所以一定要輪詢等滿 settle 秒才准重試。
+local function castUntilStatus(action, statusId, maxTries, castTime, gap, settle)
     maxTries = maxTries or 6
     castTime = castTime or 4    -- 詠唱最長等多久 (含緩衝)
     gap      = gap      or 0.5  -- 重試前的間隔
+    settle   = settle   or 2    -- 施放後至少輪詢這麼久才判定失敗
     if hasStatus(statusId) then return true end
     for i = 1, maxTries do
         yield(action)
@@ -161,8 +175,10 @@ local function castUntilStatus(action, statusId, maxTries, castTime, gap)
         -- 等詠唱完成 (cast flag 變 false) 或 buff 已上 (即放即得 buff 提前退出)
         waitUntil(function() return not isCasting() or hasStatus(statusId) end,
                   castTime, 0.1)
-        wait(0.2)  -- 等 buff 結算上身
-        if hasStatus(statusId) then return true end
+        -- 輪詢等 buff 結算上身;期間一出現就成功,不會提早重放
+        if waitUntil(function() return hasStatus(statusId) end, settle, 0.2) then
+            return true
+        end
         wait(gap)  -- 重試前喘口氣
     end
     return false
@@ -358,16 +374,149 @@ end
 
 
 ----------------------------------------------------------------
--- 進入副本:開搜尋器 → 按參加 → 等媒合 → 按 Commence → 等載入
+-- 自動選本 (ContentsFinder / AgentContentsFinder)
+--   1. 用 Excel 的 ContentFinderCondition 表按名字查出 RowId
+--   2. Instances.ContentsFinder:OpenRegularDuty(id) 直接把副本掛上搜尋器
+--   3. 設定「解除限制 / 等級同步」等旗標
+--   任何一步失敗都退回 /dutyfinder,沿用玩家自己在畫面上選好的副本。
+----------------------------------------------------------------
+
+-- 取得 DutyFinder 包裝物件 (Instances.DutyFinder → DutyFinderWrapper)
+local function cfAgent()
+    local ok, a = pcall(function() return Instances.DutyFinder end)
+    if ok and a ~= nil then return a end
+    return nil
+end
+
+-- 掃 ContentFinderCondition 表找出 RowId
+local _resolvedDutyId = nil
+local function resolveDutyId()
+    if DUTY_CFC_ID ~= nil then return DUTY_CFC_ID end
+    if _resolvedDutyId ~= nil then return _resolvedDutyId end
+
+    local ok, id = pcall(function()
+        local sheet = Excel.GetSheet("ContentFinderCondition")
+        if sheet == nil then return nil end
+        local count = sheet.Count or sheet.RowCount or 1000
+        for i = 0, count - 1 do
+            local row = sheet:GetRow(i)
+            if row ~= nil then
+                local name = tostring(row.Name or "")
+                if name ~= "" and name:find(DUTY_NAME, 1, true) then
+                    return row.RowId or i
+                end
+            end
+        end
+        return nil
+    end)
+
+    if ok and id ~= nil then
+        _resolvedDutyId = id
+        echo("查到副本「" .. DUTY_NAME .. "」 id = " .. tostring(id)
+             .. " (可填進 DUTY_CFC_ID 省略查表)")
+        return id
+    end
+    echo("查不到副本「" .. DUTY_NAME .. "」,改用畫面上已選好的副本")
+    return nil
+end
+
+-- 勾選副本選項 (IsMinIL 注意:說明頁是 IsMinIL,不是 IsMinimalIL)
+local function applyDutySettings()
+    local a = cfAgent()
+    if a == nil then return end
+    pcall(function() a.IsUnrestrictedParty = WANT_UNRESTRICTED end)
+    pcall(function() a.IsLevelSync         = WANT_LEVEL_SYNC end)
+    pcall(function() a.IsMinIL             = WANT_MIN_IL end)
+    pcall(function() a.IsSilenceEcho       = WANT_SILENCE_ECHO end)
+    pcall(function() a.IsExplorerMode      = false end)
+end
+
+-- 是否已在排隊中 (QueueState 不是 None/空閒)
+local function isQueued()
+    local ok, v = pcall(function()
+        local s = tostring(cfAgent().QueueState)
+        return s ~= "None" and s ~= "0" and s ~= "nil"
+    end)
+    return ok and v == true
+end
+
+-- 開場只做一次:勾選項 + 選副本
+--   順序很重要:必須「先勾解除限制 + 等級同步」才選副本,
+--   否則低等單人身分選不進教皇廳。
+--   回傳成功與否;失敗則沿用玩家自己在畫面上選好的副本。
+local _dutyId = nil
+local function prepareDutyFinder()
+    local id = resolveDutyId()
+    if id == nil then return false end
+    local a = cfAgent()
+    if a == nil then
+        echo("沒有 Instances.DutyFinder,改用畫面上已選好的副本")
+        return false
+    end
+
+    -- 1) 開搜尋器 (/dutyfinder 是切換式的,已開就別再按)
+    if not isAddonVisible("ContentsFinder") then
+        yield("/dutyfinder")
+    end
+    waitUntil(function() return isAddonVisible("ContentsFinder") end, 5, 0.1)
+    wait(0.3)
+
+    -- 2) 先勾解除限制 + 等級同步
+    applyDutySettings()
+    wait(0.3)
+
+    -- 3) 再選副本
+    if not pcall(function() a:OpenRegularDuty(id) end) then
+        echo("OpenRegularDuty 失敗,改用畫面上已選好的副本")
+        return false
+    end
+    wait(0.3)
+
+    -- 4) 選本動作有可能重置旗標,確認一次;不符就補寫
+    local ok, good = pcall(function()
+        return a.IsUnrestrictedParty == WANT_UNRESTRICTED
+           and a.IsLevelSync == WANT_LEVEL_SYNC
+    end)
+    if not (ok and good) then
+        applyDutySettings()
+        wait(0.3)
+    end
+
+    _dutyId = id
+    echo("已選定副本 id = " .. tostring(id) .. " (解除限制 + 等級同步)")
+    return true
+end
+
+-- 每輪呼叫:排隊;回傳 "queued" / "selected"(需自己點按鈕)
+local function queueCurrentDuty()
+    local a = cfAgent()
+    if a ~= nil and _dutyId ~= nil then
+        if pcall(function() a:QueueDuty(_dutyId) end) then
+            return "queued"
+        end
+        echo("QueueDuty 失敗,退回點按鈕報名")
+    end
+    return "selected"
+end
+
+
+----------------------------------------------------------------
+-- 進入副本:排隊 → 等媒合 → 按 Commence → 等載入
+--   副本與選項已在開場的 prepareDutyFinder() 設好,這裡只負責報名
 ----------------------------------------------------------------
 local function enterDuty()
-    -- 開 ContentsFinder
-    yield("/dutyfinder")
-    waitUntil(function() return isAddonVisible("ContentsFinder") end, 3, 0.1)
+    local mode = queueCurrentDuty()
 
-    -- 按「參加副本」按鈕
-    -- 若按了沒反應,把 (12,0) 改成 (12,1) / (11,0) / (14,0) 試試
-    clickCallback("ContentsFinder", 12, 0)
+    -- QueueDuty 已經排進去了就不用再按按鈕
+    if mode ~= "queued" then
+        if not isAddonVisible("ContentsFinder") then
+            yield("/dutyfinder")
+        end
+        waitUntil(function() return isAddonVisible("ContentsFinder") end, 3, 0.1)
+        -- 按「參加副本」按鈕
+        -- 若按了沒反應,把 (12,0) 改成 (12,1) / (11,0) / (14,0) 試試
+        clickCallback("ContentsFinder", 12, 0)
+    end
 
     -- 等 ContentsFinderConfirm 媒合彈窗 (solo 解限通常秒進)
     if not waitUntil(function() return isAddonVisible("ContentsFinderConfirm") end,
@@ -403,7 +552,7 @@ end
 ----------------------------------------------------------------
 local function runRotation()
     -- 開場:鬥爭本能 (2.5 秒詠唱;重試直到 buff 上身)
-    if not castUntilStatus("/blueaction 鬥爭本能", STATUS_MOON_FLUTE, 6, 4, 0.5) then
+    if not castUntilStatus("/blueaction 鬥爭本能", STATUS_MOON_FLUTE, 4, 4, 1.0, 2.5) then
         echo("鬥爭本能上不去,中止本輪")
         return
     end
@@ -495,8 +644,35 @@ end
 
 
 ----------------------------------------------------------------
+-- 開場準備 (副本外,只做一次)
+--   1. 掛上強力守護
+--   2. 勾解除限制 + 等級同步,並選定副本
+----------------------------------------------------------------
+local function setupOnce()
+    echo("--- 開場準備 ---")
+
+    -- 強力守護 (瞬發姿態技;檢查 buff 上身才算成功)
+    if hasStatus(STATUS_MIGHTY_GUARD) then
+        echo("強力守護已在身上")
+    -- 姿態技,重放會取消 → 少試幾次、每次等久一點 (settle 2.5s)
+    elseif castUntilStatus("/blueaction 強力守護", STATUS_MIGHTY_GUARD, 3, 2, 1.0, 2.5) then
+        echo("強力守護 OK")
+    else
+        echo("強力守護上不去 (確認技能已設定 / STATUS_MIGHTY_GUARD id 是否正確)")
+    end
+
+    -- 選項 + 選本
+    if not prepareDutyFinder() then
+        echo("自動選本失敗,請先自行在任務搜尋器選好副本與選項")
+    end
+end
+
+
+----------------------------------------------------------------
 -- 主迴圈
 ----------------------------------------------------------------
+setupOnce()
+
 echo("========= 開始執行,共 " .. LOOP_COUNT .. " 次 =========")
 
 for i = 1, LOOP_COUNT do
