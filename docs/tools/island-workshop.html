@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>無人島自動工坊文字轉換 — xivdlm 小工具</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<div class="wrap">
+  <a class="crumb" href="../index.html">← 回工具首頁</a>
+
+  <header>
+    <h1>無人島自動工坊文字轉換</h1>
+    <p class="subtitle">把 island.ffxiv.cyou 排程器複製出來的簡中排程，轉成自動工坊插件用的台服物品清單。</p>
+  </header>
+
+  <div class="panes">
+    <div class="pane">
+      <label for="src">貼上排程（簡中）</label>
+      <textarea id="src" spellcheck="false" placeholder="第1天&#10;休息&#10;第2天&#10;5806&#10;3&#10;×&#10;新薯沙拉&#10;874h&#10;…"></textarea>
+    </div>
+    <div class="pane">
+      <label for="out">轉換結果</label>
+      <textarea id="out" spellcheck="false" readonly></textarea>
+    </div>
+  </div>
+
+  <div class="bar">
+    <button id="copy" class="primary">複製結果</button>
+    <button id="clear">清空</button>
+    <span id="status" class="status"></span>
+  </div>
+
+  <div id="warn" class="note warn" hidden></div>
+
+  <details class="dict">
+    <summary>物品名稱對應表（<span id="dictCount"></span> 項）</summary>
+    <table id="dictTable"></table>
+  </details>
+
+  <footer>
+    <a href="https://github.com/ka95708/xivdlm-repo">ka95708/xivdlm-repo</a>
+  </footer>
+</div>
+
+<script src="../assets/island-items.js"></script>
+<script>
+// 工坊組數 → 輸出標題
+const GROUP_LABEL = {
+  1: '4th Workshop',
+  3: 'First 3 Workshops',
+  4: 'All Workshops',
+};
+
+const RE_CYCLE = /^第\s*(\d+)\s*天$/;
+const RE_REST  = /^休息$/;
+const RE_TIME  = /^\d+\s*h$/i;         // 收益+工時，例如 874h
+const RE_NUM   = /^\d+$/;
+const RE_MULT  = /^[×xX✕╳*]$/;
+
+// 解析排程文字 → [{ cycle, rest, groups: [{ count, items:[原始名稱] }] }]
+function parse(text) {
+  const lines = text.split(/\r?\n/).map(s => s.trim()).filter(s => s.length);
+  const cycles = [];
+  let cycle = null, group = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const m = RE_CYCLE.exec(line);
+
+    if (m) {
+      cycle = { cycle: Number(m[1]), rest: false, groups: [] };
+      cycles.push(cycle);
+      group = null;
+      continue;
+    }
+    if (!cycle) continue;                       // 第1天之前的雜訊（收益、網址）一律忽略
+
+    if (RE_REST.test(line)) { cycle.rest = true; continue; }
+    if (RE_TIME.test(line)) continue;           // 工時
+    if (RE_MULT.test(line)) continue;           // × 符號
+
+    if (RE_NUM.test(line)) {
+      // 後面接 × 的數字才是工坊組數，否則是當日收益
+      if (RE_MULT.test(lines[i + 1] || '')) {
+        group = { count: Number(line), items: [] };
+        cycle.groups.push(group);
+      }
+      continue;
+    }
+
+    if (group) group.items.push(line);          // 其餘視為物品名稱
+  }
+  return cycles;
+}
+
+function convert(text) {
+  const cycles = parse(text);
+  const unknown = new Set();
+  const out = [];
+
+  for (const c of cycles) {
+    out.push('Cycle ' + c.cycle);
+    c.groups.forEach((g, gi) => {
+      if (gi > 0) out.push('.');
+      out.push(GROUP_LABEL[g.count] || (g.count + ' Workshops'));
+      for (const name of g.items) {
+        const mapped = window.ISLAND_ITEMS[name];
+        if (!mapped) unknown.add(name);
+        out.push(mapped || name);
+      }
+    });
+  }
+  return { text: out.join('\n'), cycles, unknown: [...unknown] };
+}
+
+const src = document.getElementById('src');
+const out = document.getElementById('out');
+const status = document.getElementById('status');
+const warn = document.getElementById('warn');
+
+function setStatus(msg, ok) {
+  status.textContent = msg;
+  status.classList.toggle('ok', !!ok);
+}
+
+function run() {
+  if (!src.value.trim()) {
+    out.value = '';
+    warn.hidden = true;
+    setStatus('');
+    return;
+  }
+  const r = convert(src.value);
+  out.value = r.text;
+
+  const items = r.cycles.reduce((n, c) => n + c.groups.reduce((k, g) => k + g.items.length, 0), 0);
+  const rest = r.cycles.filter(c => c.rest).length;
+  setStatus(`${r.cycles.length} 個週期（休息 ${rest} 天）、${items} 件成品`);
+
+  if (r.unknown.length) {
+    warn.hidden = false;
+    warn.innerHTML = '對應表沒有這些名稱，已原樣輸出，請確認：<br>' +
+      r.unknown.map(n => '<code>' + n + '</code>').join('、');
+  } else {
+    warn.hidden = true;
+  }
+}
+
+src.addEventListener('input', run);
+
+document.getElementById('copy').addEventListener('click', async () => {
+  if (!out.value) { setStatus('沒有可複製的內容'); return; }
+  try {
+    await navigator.clipboard.writeText(out.value);
+  } catch {
+    out.select();
+    document.execCommand('copy');
+  }
+  setStatus('已複製', true);
+});
+
+document.getElementById('clear').addEventListener('click', () => {
+  src.value = '';
+  run();
+  src.focus();
+});
+
+// 對應表列出來，方便查漏
+(function fillDict() {
+  const entries = Object.entries(window.ISLAND_ITEMS);
+  document.getElementById('dictCount').textContent = entries.length;
+  document.getElementById('dictTable').innerHTML = entries
+    .map(([k, v]) => `<tr><td>${k}</td><td>→</td><td>${v}</td></tr>`)
+    .join('');
+})();
+
+run();
+</script>
+</body>
+</html>
