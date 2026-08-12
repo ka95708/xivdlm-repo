@@ -171,8 +171,10 @@ local function castUntilStatus(action, statusId, maxTries, castTime, gap, settle
     if hasStatus(statusId) then return true end
     for i = 1, maxTries do
         yield(action)
-        wait(0.3)  -- 給遊戲時間開始詠唱
-        -- 等詠唱完成 (cast flag 變 false) 或 buff 已上 (即放即得 buff 提前退出)
+        -- 先等詠唱真的開始:指令送到伺服器有延遲,太早檢查會誤判成「沒在詠唱」,
+        -- 導致下面的「等詠唱結束」當場跳過。瞬發技沒有詠唱,會在 buff 上身時提前跳出。
+        waitUntil(function() return isCasting() or hasStatus(statusId) end, 1.5, 0.1)
+        -- 再等詠唱完成 (cast flag 變 false) 或 buff 已上 (即放即得 buff 提前退出)
         waitUntil(function() return not isCasting() or hasStatus(statusId) end,
                   castTime, 0.1)
         -- 輪詢等 buff 結算上身;期間一出現就成功,不會提早重放
