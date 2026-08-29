@@ -477,8 +477,8 @@
     "Author": "veyn, croizat",
     "Name": "Visland",
     "InternalName": "visland",
-    "AssemblyVersion": "0.0.0.139",
-    "TestingAssemblyVersion": "0.0.0.139",
+    "AssemblyVersion": "0.0.0.138",
+    "TestingAssemblyVersion": "0.0.0.138",
     "Description": "自動化無人島的採集、工房排程與相關活動。台服 7.3 / Dalamud API13 版本。",
     "Punchline": "無人島採集、工坊排程與相關活動自動化",
     "ApplicableVersion": "any",
@@ -493,9 +493,9 @@
     "LoadPriority": 0,
     "IsHide": false,
     "IsTestingExclusive": false,
-    "DownloadLinkInstall": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/visland-0.0.0.139.zip",
-    "DownloadLinkTesting": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/visland-0.0.0.139.zip",
-    "DownloadLinkUpdate": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/visland-0.0.0.139.zip",
+    "DownloadLinkInstall": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/visland-0.0.0.138.zip",
+    "DownloadLinkTesting": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/visland-0.0.0.138.zip",
+    "DownloadLinkUpdate": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/visland-0.0.0.138.zip",
     "AcceptsFeedback": true
   },
   {
