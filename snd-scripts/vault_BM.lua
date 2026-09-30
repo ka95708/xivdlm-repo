@@ -10,14 +10,14 @@
     1) 設定循環次數，修改 LOOP_COUNT = (你想要打幾次副本)
 
   腳本流程:
-    [開場一次] 施放強力守護 → 勾「解除限制」+「等級同步」→ 選定副本 (id = 34)
+    [開場一次] 施放非凡防禦 → 勾「解除限制」+「等級同步」→ 選定副本 (id = 34)
     [每輪循環] 檢查耐久 → 排隊進場 → 跑循環 → 退本
 
   必備技能:
     No.12 怒髮衝冠
-    No.13 白風
+    No.13 純白微風
     No.21 自爆
-    No.30 強力守護
+    No.30 非凡防禦
     No.33 冰凍咆哮
     No.47 轟雷
     No.63 音爆
@@ -51,7 +51,7 @@ local WANT_SILENCE_ECHO = false  -- 無視增益效果
 
 -- Buff StatusId
 local STATUS_MOON_FLUTE   = 2498   -- 鬥爭本能 buff
-local STATUS_MIGHTY_GUARD = 1719   -- 強力守護 buff (若一直上不去,請確認此 id)
+local STATUS_MIGHTY_GUARD = 1719   -- 非凡防禦 buff (若一直上不去,請確認此 id)
 
 
 ----------------------------------------------------------------
@@ -160,8 +160,8 @@ local function isCasting() return _cond(27) end
 -- 反覆施放技能,直到 buff 上身或超過次數
 --   流程:下指令 → 等詠唱結束 (最多 castTime 秒) → 輪詢 settle 秒等 buff 上身 → 沒上才重試
 --
---   ※ settle 很重要:強力守護 / 鬥爭本能 這類技能,buff 要一下才會掛上 StatusList。
---     若太早判定失敗而重放,強力守護會被切掉(姿態技再按一次 = 取消),
+--   ※ settle 很重要:非凡防禦 / 鬥爭本能 這類技能,buff 要一下才會掛上 StatusList。
+--     若太早判定失敗而重放,非凡防禦會被切掉(姿態技再按一次 = 取消),
 --     結果來回開關永遠上不去。所以一定要輪詢等滿 settle 秒才准重試。
 local function castUntilStatus(action, statusId, maxTries, castTime, gap, settle)
     maxTries = maxTries or 6
@@ -589,7 +589,7 @@ local function runRotation()
     wait(3)
     yield("/blueaction 超振動")
     wait(3)
-    yield("/blueaction 白風")
+    yield("/blueaction 純白微風")
     wait(2)
     yield("/ac 衝刺")
 
@@ -647,20 +647,20 @@ end
 
 ----------------------------------------------------------------
 -- 開場準備 (副本外,只做一次)
---   1. 掛上強力守護
+--   1. 掛上非凡防禦
 --   2. 勾解除限制 + 等級同步,並選定副本
 ----------------------------------------------------------------
 local function setupOnce()
     echo("--- 開場準備 ---")
 
-    -- 強力守護 (瞬發姿態技;檢查 buff 上身才算成功)
+    -- 非凡防禦 (瞬發姿態技;檢查 buff 上身才算成功)
     if hasStatus(STATUS_MIGHTY_GUARD) then
-        echo("強力守護已在身上")
+        echo("非凡防禦已在身上")
     -- 姿態技,重放會取消 → 少試幾次、每次等久一點 (settle 2.5s)
-    elseif castUntilStatus("/blueaction 強力守護", STATUS_MIGHTY_GUARD, 3, 2, 1.0, 2.5) then
-        echo("強力守護 OK")
+    elseif castUntilStatus("/blueaction 非凡防禦", STATUS_MIGHTY_GUARD, 3, 2, 1.0, 2.5) then
+        echo("非凡防禦 OK")
     else
-        echo("強力守護上不去 (確認技能已設定 / STATUS_MIGHTY_GUARD id 是否正確)")
+        echo("非凡防禦上不去 (確認技能已設定 / STATUS_MIGHTY_GUARD id 是否正確)")
     end
 
     -- 選項 + 選本
