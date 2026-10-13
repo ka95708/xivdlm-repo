@@ -12,7 +12,7 @@
 
   <header>
     <h1>無人島自動工坊文字轉換</h1>
-    <p class="subtitle">把 island.ffxiv.cyou 排程器複製出來的簡中排程，轉成自動工坊插件用的台服物品清單。</p>
+    <p class="subtitle">把 island.ffxiv.cyou 的排程轉成自動工坊插件用的台服物品清單。分享網址、「复制」按鈕的文字、直接選取的表格文字都吃。</p>
   </header>
 
   <section class="embed">
@@ -31,8 +31,8 @@
 
   <div class="panes">
     <div class="pane">
-      <label for="src">貼上排程（簡中）</label>
-      <textarea id="src" spellcheck="false" placeholder="第1天&#10;休息&#10;第2天&#10;5806&#10;3&#10;×&#10;新薯沙拉&#10;874h&#10;…"></textarea>
+      <label for="src">貼上排程<span id="fmt" class="fmt"></span></label>
+      <textarea id="src" spellcheck="false" placeholder="三種都可以：&#10;· 分享網址 https://island.ffxiv.cyou/#/plan/gAACNjtF…&#10;· 按「复制」得到的文字&#10;· 直接選取排班表複製的文字"></textarea>
     </div>
     <div class="pane">
       <label for="out">轉換結果</label>
@@ -50,7 +50,7 @@
   <div id="warn" class="note warn" hidden></div>
 
   <details class="dict">
-    <summary>物品名稱對應表（<span id="dictCount"></span> 項）</summary>
+    <summary>配方對應表（<span id="dictCount"></span> 項）</summary>
     <table id="dictTable"></table>
   </details>
 
@@ -61,79 +61,166 @@
 
 <script src="../assets/island-items.js"></script>
 <script>
+// ---------------------------------------------------------------------------
 // 工坊組數 → 輸出標題
-const GROUP_LABEL = {
-  1: '4th Workshop',
-  3: 'First 3 Workshops',
-  4: 'All Workshops',
-};
+// ---------------------------------------------------------------------------
+const GROUP_LABEL = { 1: '4th Workshop', 3: 'First 3 Workshops', 4: 'All Workshops' };
+const RECIPES = window.ISLAND_RECIPES;
+const BY_CN = (() => {
+  const m = {};
+  RECIPES.forEach((r, id) => { if (r) m[r.cn] = id; });
+  return m;
+})();
 
-const RE_CYCLE = /^第\s*(\d+)\s*天$/;
-const RE_REST  = /^休息$/;
-const RE_TIME  = /^\d+\s*h$/i;         // 收益+工時，例如 874h
-const RE_NUM   = /^\d+$/;
-const RE_MULT  = /^[×xX✕╳*]$/;
+// 三種輸入都解析成 [{ rest, groups: [{ worker, items: [{ id, name }] }] }]
 
-// 解析排程文字 → [{ cycle, rest, groups: [{ count, items:[原始名稱] }] }]
-function parse(text) {
-  const lines = text.split(/\r?\n/).map(s => s.trim()).filter(s => s.length);
+function toItem(id) {
+  const r = RECIPES[id];
+  return { id, name: r ? r.tw : '配方#' + id };
+}
+
+function byName(cn) {
+  const id = BY_CN[cn];
+  return id ? toItem(id) : { id: 0, name: cn, unknown: true };
+}
+
+// --- 格式一：分享碼 / 分享網址 --------------------------------------------
+// 位元組結構（取自站方 main.js 的 Rd/Md）：
+//   [128] 每週期:[組數] 每組:[(工坊數<<4)|物品數] + 物品數個配方 ID
+//   第一個位元組 <128 為舊格式：每週期 [物品數] + 配方 ID，沒有工坊數
+function decodeShareCode(code) {
+  const b64 = code.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(b64 + '=='.slice(2 - (b64.length & 3) & 3));
+  const e = Uint8Array.from(bin, c => c.charCodeAt(0));
+  const cycles = [];
+
+  if (e[0] !== 128) {                                   // 舊格式
+    for (let s = 0; s < e.length; s++) {
+      const n = e[s];
+      const steps = Array.from(e.slice(s + 1, s + 1 + n));
+      cycles.push({
+        rest: steps.length === 0,
+        groups: steps.length ? [{ worker: 4, items: steps.map(toItem), legacy: true }] : [],
+      });
+      s += n;
+    }
+    return cycles;
+  }
+
+  for (let s = 1; s < e.length; s++) {                   // 現行格式
+    const n = e[s++];
+    const groups = [];
+    for (let u = 0; u < n; u++) {
+      const r = e[s++], worker = r >> 4, len = r & 15;
+      groups.push({ worker, items: Array.from(e.slice(s, s + len)).map(toItem) });
+      s += len;
+    }
+    cycles.push({ rest: groups.length === 0, groups });
+    s--;
+  }
+  return cycles;
+}
+
+// --- 格式二：「复制」按鈕的文字 --------------------------------------------
+//   第1天: 休息
+//   第2天: 5508
+//       3× 新薯沙拉, 煎红花菜豆, 面包
+function parseCopyText(text) {
+  const cycles = [];
+  let cycle = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    const day = /^第\s*(\d+)\s*天\s*[:：]\s*(.*)$/.exec(line);
+    if (day) {
+      cycle = { rest: /^休息/.test(day[2]), groups: [] };
+      cycles.push(cycle);
+      continue;
+    }
+    const grp = /^(\d+)\s*[×xX]\s*(.+)$/.exec(line);
+    if (grp && cycle) {
+      const items = grp[2].split(/[,，]/).map(s => s.trim()).filter(Boolean).map(byName);
+      cycle.groups.push({ worker: Number(grp[1]), items });
+    }
+  }
+  return cycles;
+}
+
+// --- 格式三：直接選取排班表的文字 ------------------------------------------
+//   第2天 / 5806 / 3 / × / 新薯沙拉 / 874h / …
+function parseTableText(text) {
+  const RE_TIME = /^\d+\s*h$/i, RE_NUM = /^\d+$/, RE_MULT = /^[×xX✕╳*]$/;
+  const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   const cycles = [];
   let cycle = null, group = null;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const m = RE_CYCLE.exec(line);
-
-    if (m) {
-      cycle = { cycle: Number(m[1]), rest: false, groups: [] };
-      cycles.push(cycle);
-      group = null;
-      continue;
-    }
-    if (!cycle) continue;                       // 第1天之前的雜訊（收益、網址）一律忽略
-
-    if (RE_REST.test(line)) { cycle.rest = true; continue; }
-    if (RE_TIME.test(line)) continue;           // 工時
-    if (RE_MULT.test(line)) continue;           // × 符號
-
+    const day = /^第\s*(\d+)\s*天$/.exec(line);
+    if (day) { cycle = { rest: false, groups: [] }; cycles.push(cycle); group = null; continue; }
+    if (!cycle) continue;                       // 第1天之前的收益、網址等雜訊
+    if (/^休息$/.test(line)) { cycle.rest = true; continue; }
+    if (RE_TIME.test(line) || RE_MULT.test(line)) continue;
     if (RE_NUM.test(line)) {
-      // 後面接 × 的數字才是工坊組數，否則是當日收益
-      if (RE_MULT.test(lines[i + 1] || '')) {
-        group = { count: Number(line), items: [] };
+      if (RE_MULT.test(lines[i + 1] || '')) {   // 後面接 × 才是工坊組數
+        group = { worker: Number(line), items: [] };
         cycle.groups.push(group);
       }
-      continue;
+      continue;                                 // 否則是當日收益
     }
-
-    if (group) group.items.push(line);          // 其餘視為物品名稱
+    if (group) group.items.push(byName(line));
   }
   return cycles;
 }
 
-function convert(text) {
-  const cycles = parse(text);
-  const unknown = new Set();
-  const out = [];
+// --- 自動判斷格式 -----------------------------------------------------------
+function parseAny(text) {
+  const t = text.trim();
+  const link = /#\/plan\/([A-Za-z0-9_-]{8,})/.exec(t);
+  const bare = /^[A-Za-z0-9_-]{8,}$/.test(t) ? t : null;
+  if (link || bare) {
+    try {
+      return { kind: '分享碼', cycles: decodeShareCode(link ? link[1] : bare) };
+    } catch (err) {
+      return { kind: '分享碼', cycles: [], error: '分享碼解不開：' + err.message };
+    }
+  }
+  if (/^\s*第\s*\d+\s*天\s*[:：]/m.test(t)) return { kind: '复制文字', cycles: parseCopyText(t) };
+  return { kind: '表格文字', cycles: parseTableText(t) };
+}
 
-  for (const c of cycles) {
-    out.push('Cycle ' + c.cycle);
+function convert(text) {
+  const r = parseAny(text);
+  const unknownNames = new Set(), oddWorkers = new Set();
+  const out = [];
+  let legacy = false;
+
+  for (let i = 0; i < r.cycles.length; i++) {
+    const c = r.cycles[i];
+    out.push('Cycle ' + (i + 1));
     c.groups.forEach((g, gi) => {
       if (gi > 0) out.push('.');
-      out.push(GROUP_LABEL[g.count] || (g.count + ' Workshops'));
-      for (const name of g.items) {
-        const mapped = window.ISLAND_ITEMS[name];
-        if (!mapped) unknown.add(name);
-        out.push(mapped || name);
+      if (g.legacy) legacy = true;
+      if (!GROUP_LABEL[g.worker]) oddWorkers.add(g.worker);
+      out.push(GROUP_LABEL[g.worker] || (g.worker + ' Workshops'));
+      for (const it of g.items) {
+        if (it.unknown) unknownNames.add(it.name);
+        out.push(it.name);
       }
     });
   }
-  return { text: out.join('\n'), cycles, unknown: [...unknown] };
+  return Object.assign({}, r, {
+    text: out.join('\n'),
+    unknownNames: [...unknownNames],
+    oddWorkers: [...oddWorkers],
+    legacy,
+  });
 }
 
 const src = document.getElementById('src');
 const out = document.getElementById('out');
 const status = document.getElementById('status');
 const warn = document.getElementById('warn');
+const fmt = document.getElementById('fmt');
 
 function setStatus(msg, ok) {
   status.textContent = msg;
@@ -142,39 +229,33 @@ function setStatus(msg, ok) {
 
 function run() {
   if (!src.value.trim()) {
-    out.value = '';
-    warn.hidden = true;
-    setStatus('');
+    out.value = ''; warn.hidden = true; fmt.textContent = ''; setStatus('');
     return;
   }
   const r = convert(src.value);
   out.value = r.text;
+  fmt.textContent = '（辨識為' + r.kind + '）';
 
   const items = r.cycles.reduce((n, c) => n + c.groups.reduce((k, g) => k + g.items.length, 0), 0);
   const rest = r.cycles.filter(c => c.rest).length;
-  setStatus(`${r.cycles.length} 個週期（休息 ${rest} 天）、${items} 件成品`);
+  setStatus(r.cycles.length
+    ? r.cycles.length + ' 個週期（休息 ' + rest + ' 天）、' + items + ' 件成品'
+    : '看不出排程內容');
 
-  if (r.unknown.length) {
-    warn.hidden = false;
-    warn.innerHTML = '對應表沒有這些名稱，已原樣輸出，請確認：<br>' +
-      r.unknown.map(n => '<code>' + n + '</code>').join('、');
-  } else {
-    warn.hidden = true;
+  const msgs = [];
+  if (r.error) msgs.push(r.error);
+  if (r.unknownNames.length) {
+    msgs.push('對應表沒有這些名稱，已原樣輸出：' + r.unknownNames.map(n => '<code>' + n + '</code>').join('、'));
   }
+  if (r.oddWorkers.length) {
+    msgs.push('出現非 1／3／4 的工坊數（' + r.oddWorkers.join('、') + '），標題用「N Workshops」代替，插件不一定吃。');
+  }
+  if (r.legacy) msgs.push('這是舊版分享碼，裡面沒有工坊數，一律當成 All Workshops。');
+  warn.hidden = !msgs.length;
+  warn.innerHTML = msgs.join('<br>');
 }
 
 src.addEventListener('input', run);
-
-document.getElementById('copy').addEventListener('click', async () => {
-  if (!out.value) { setStatus('沒有可複製的內容'); return; }
-  try {
-    await navigator.clipboard.writeText(out.value);
-  } catch {
-    out.select();
-    document.execCommand('copy');
-  }
-  setStatus('已複製', true);
-});
 
 document.getElementById('paste').addEventListener('click', async () => {
   try {
@@ -188,9 +269,15 @@ document.getElementById('paste').addEventListener('click', async () => {
   }
 });
 
-document.getElementById('toggleEmbed').addEventListener('click', (e) => {
-  const collapsed = document.querySelector('.embed').classList.toggle('collapsed');
-  e.target.textContent = collapsed ? '展開' : '收合';
+document.getElementById('copy').addEventListener('click', async () => {
+  if (!out.value) { setStatus('沒有可複製的內容'); return; }
+  try {
+    await navigator.clipboard.writeText(out.value);
+  } catch {
+    out.select();
+    document.execCommand('copy');
+  }
+  setStatus('已複製', true);
 });
 
 document.getElementById('clear').addEventListener('click', () => {
@@ -199,12 +286,16 @@ document.getElementById('clear').addEventListener('click', () => {
   src.focus();
 });
 
+document.getElementById('toggleEmbed').addEventListener('click', (e) => {
+  const collapsed = document.querySelector('.embed').classList.toggle('collapsed');
+  e.target.textContent = collapsed ? '展開' : '收合';
+});
+
 // 對應表列出來，方便查漏
 (function fillDict() {
-  const entries = Object.entries(window.ISLAND_ITEMS);
-  document.getElementById('dictCount').textContent = entries.length;
-  document.getElementById('dictTable').innerHTML = entries
-    .map(([k, v]) => `<tr><td>${k}</td><td>→</td><td>${v}</td></tr>`)
+  document.getElementById('dictCount').textContent = RECIPES.length - 1;
+  document.getElementById('dictTable').innerHTML = RECIPES
+    .map((r, id) => r ? '<tr><td>' + id + '</td><td>' + r.cn + '</td><td>→</td><td>' + r.tw + '</td></tr>' : '')
     .join('');
 })();
 
