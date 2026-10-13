@@ -148,3 +148,34 @@ details.dict td:nth-child(2) { color: var(--text-dim); width: 1.5rem; text-align
 .note.warn { margin-top: 1rem; border-left-color: #c8a05a; }
 
 footer { margin-top: 3rem; color: var(--text-dim); font-size: .82rem; }
+
+/* 內嵌排班表 */
+.embed {
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.embed-bar {
+  display: flex;
+  align-items: center;
+  gap: .9rem;
+  padding: .5rem .8rem;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--line);
+  font-size: .85rem;
+  color: var(--text-dim);
+}
+.embed-bar button { margin-left: auto; padding: .25rem .7rem; font-size: .8rem; }
+.embed iframe {
+  display: block;
+  width: 100%;
+  height: 720px;
+  border: 0;
+  background: #fff;
+}
+.embed.collapsed iframe { display: none; }
+.embed.collapsed { margin-bottom: 1rem; }
+.embed.collapsed .embed-bar { border-bottom: 0; }
+
+.wrap.wide { max-width: 1180px; }

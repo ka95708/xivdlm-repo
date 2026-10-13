@@ -7,13 +7,27 @@
 <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
-<div class="wrap">
+<div class="wrap wide">
   <a class="crumb" href="../index.html">← 回工具首頁</a>
 
   <header>
     <h1>無人島自動工坊文字轉換</h1>
     <p class="subtitle">把 island.ffxiv.cyou 排程器複製出來的簡中排程，轉成自動工坊插件用的台服物品清單。</p>
   </header>
+
+  <section class="embed">
+    <div class="embed-bar">
+      <span>排班表 — island.ffxiv.cyou</span>
+      <a href="https://island.ffxiv.cyou/#/plan" target="_blank" rel="noopener">在新分頁開啟 ↗</a>
+      <button id="toggleEmbed" type="button">收合</button>
+    </div>
+    <iframe id="planner"
+            src="https://island.ffxiv.cyou/#/plan"
+            title="island.ffxiv.cyou 排班表"
+            allow="clipboard-write https://island.ffxiv.cyou"
+            referrerpolicy="no-referrer"
+            loading="lazy"></iframe>
+  </section>
 
   <div class="panes">
     <div class="pane">
@@ -27,7 +41,8 @@
   </div>
 
   <div class="bar">
-    <button id="copy" class="primary">複製結果</button>
+    <button id="paste" class="primary">貼上並轉換</button>
+    <button id="copy">複製結果</button>
     <button id="clear">清空</button>
     <span id="status" class="status"></span>
   </div>
@@ -159,6 +174,23 @@ document.getElementById('copy').addEventListener('click', async () => {
     document.execCommand('copy');
   }
   setStatus('已複製', true);
+});
+
+document.getElementById('paste').addEventListener('click', async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text.trim()) { setStatus('剪貼簿是空的'); return; }
+    src.value = text;
+    run();
+  } catch {
+    setStatus('瀏覽器不給讀剪貼簿，請直接 Ctrl+V 貼到左欄');
+    src.focus();
+  }
+});
+
+document.getElementById('toggleEmbed').addEventListener('click', (e) => {
+  const collapsed = document.querySelector('.embed').classList.toggle('collapsed');
+  e.target.textContent = collapsed ? '展開' : '收合';
 });
 
 document.getElementById('clear').addEventListener('click', () => {
