@@ -1,0 +1,23 @@
+{
+  "Name": "Barkeep",
+  "InternalName": "Barkeep",
+  "Author": "ka95708",
+  "Punchline": "畫面上一條工具列，滑過展開面板，換套裝、做情感動作一鍵完成。",
+  "Description": "一條可自由擺放的工具列：按鈕直接執行指令（可做成開關），面板滑過就展開。\n\n面板裡放套裝列表、情感動作，或自己拖進來的自訂區塊。輸入 /barkeep 開啟設定，/barkeep edit 進入編輯模式。",
+  "ApplicableVersion": "any",
+  "RepoUrl": "https://github.com/ka95708/xivdlm-repo",
+  "CategoryTags": [
+    "UI",
+    "utility"
+  ],
+  "Tags": [
+    "hotbar",
+    "macro",
+    "shortcut"
+  ],
+  "LoadRequiredState": 0,
+  "LoadSync": false,
+  "CanUnloadAsync": false,
+  "LoadPriority": 0,
+  "AcceptsFeedback": false
+}

@@ -28,3 +28,10 @@ $RECYCLE.BIN/
 *.bak
 tmp/
 temp/
+
+# .NET build output
+bin/
+obj/
+*.user
+*.suo
+.vs/

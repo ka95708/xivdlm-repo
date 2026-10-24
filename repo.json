@@ -899,5 +899,23 @@
     "DownloadLinkTesting": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/Cammy-2.1.0.14.zip",
     "DownloadLinkUpdate": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/Cammy-2.1.0.14.zip",
     "AcceptsFeedback": false
+  },
+  {
+    "Author": "ka95708",
+    "Name": "Barkeep",
+    "InternalName": "Barkeep",
+    "AssemblyVersion": "0.1.0.0",
+    "TestingAssemblyVersion": "0.1.0.0",
+    "Description": "一條可自由擺放的工具列：按鈕直接執行指令（可做成開關），面板滑過就展開。\n\n面板裡放套裝列表、情感動作，或自己拖進來的自訂區塊。輸入 /barkeep 開啟設定，/barkeep edit 進入編輯模式。",
+    "Punchline": "畫面上一條工具列，滑過展開面板，換套裝、做情感動作一鍵完成。",
+    "ApplicableVersion": "any",
+    "RepoUrl": "https://github.com/ka95708/xivdlm-repo",
+    "Tags": ["hotbar", "macro", "shortcut"],
+    "CategoryTags": ["UI", "utility"],
+    "DalamudApiLevel": 13,
+    "TestingDalamudApiLevel": 13,
+    "DownloadLinkInstall": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/Barkeep-0.1.0.0.zip",
+    "DownloadLinkTesting": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/Barkeep-0.1.0.0.zip",
+    "DownloadLinkUpdate": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/Barkeep-0.1.0.0.zip"
   }
 ]

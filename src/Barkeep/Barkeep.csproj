@@ -1,0 +1,10 @@
+<Project Sdk="Dalamud.NET.Sdk/13.0.0">
+
+    <PropertyGroup>
+        <Version>0.1.0.0</Version>
+        <Authors>ka95708</Authors>
+        <Company />
+        <Description>畫面上一條工具列，滑過展開面板，換套裝、做情感動作一鍵完成。</Description>
+    </PropertyGroup>
+
+</Project>
