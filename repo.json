@@ -902,20 +902,20 @@
   },
   {
     "Author": "ka95708",
-    "Name": "Barkeep",
-    "InternalName": "Barkeep",
+    "Name": "AetherKit",
+    "InternalName": "AetherKit",
     "AssemblyVersion": "0.1.0.0",
     "TestingAssemblyVersion": "0.1.0.0",
-    "Description": "一條可自由擺放的工具列：按鈕直接執行指令（可做成開關），面板滑過就展開。\n\n面板裡放套裝列表、情感動作，或自己拖進來的自訂區塊。輸入 /barkeep 開啟設定，/barkeep edit 進入編輯模式。",
-    "Punchline": "畫面上一條工具列，滑過展開面板，換套裝、做情感動作一鍵完成。",
+    "Description": "台服 API13 的多功能工具包。每個功能是一個模組，可以在設定裡個別開關。\n\n目前的模組：\n・工具列：畫面上一條工具列，滑過展開面板；換套裝、做情感動作、執行指令一鍵完成，可設開關與快捷鍵。\n・游標提示：開關按鈕開著時，在滑鼠旁顯示圖示提醒。\n\n輸入 /aetherkit 開啟設定，/aetherkit edit 切換工具列的編輯模式。",
+    "Punchline": "台服的多功能工具包，功能分成模組，需要哪個開哪個。",
     "ApplicableVersion": "any",
     "RepoUrl": "https://github.com/ka95708/xivdlm-repo",
-    "Tags": ["hotbar", "macro", "shortcut"],
+    "Tags": ["toolkit", "hotbar", "macro", "shortcut"],
     "CategoryTags": ["UI", "utility"],
     "DalamudApiLevel": 13,
     "TestingDalamudApiLevel": 13,
-    "DownloadLinkInstall": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/Barkeep-0.1.0.0.zip",
-    "DownloadLinkTesting": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/Barkeep-0.1.0.0.zip",
-    "DownloadLinkUpdate": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/Barkeep-0.1.0.0.zip"
+    "DownloadLinkInstall": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/AetherKit-0.1.0.0.zip",
+    "DownloadLinkTesting": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/AetherKit-0.1.0.0.zip",
+    "DownloadLinkUpdate": "https://github.com/ka95708/xivdlm-repo/releases/download/plugins-api13/AetherKit-0.1.0.0.zip"
   }
 ]

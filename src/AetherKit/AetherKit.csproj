@@ -1,0 +1,10 @@
+<Project Sdk="Dalamud.NET.Sdk/13.0.0">
+
+    <PropertyGroup>
+        <Version>0.1.0.0</Version>
+        <Authors>ka95708</Authors>
+        <Company />
+        <Description>台服的多功能工具包，功能分成模組，需要哪個開哪個。</Description>
+    </PropertyGroup>
+
+</Project>
