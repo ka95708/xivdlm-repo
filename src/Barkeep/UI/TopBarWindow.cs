@@ -51,7 +51,8 @@ public class TopBarWindow : Window
                 | ImGuiWindowFlags.NoFocusOnAppearing
                 | ImGuiWindowFlags.NoNav
                 | ImGuiWindowFlags.NoBackground
-                | ImGuiWindowFlags.NoMove;
+                | ImGuiWindowFlags.NoMove
+                | plugin.GameDrag.PassThrough;
 
         Position = Bar.Position;
         PositionCondition = ImGuiCond.Always;
@@ -85,9 +86,11 @@ public class TopBarWindow : Window
 
         // 項目之間與四周都有留白，滑過那些地方不該讓面板收起來
         // 按住卡片時也算滑過，理由同面板（見 PanelWindow.Draw）
+        var windowMin = ImGui.GetWindowPos();
         if (ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows
                                   | ImGuiHoveredFlags.AllowWhenBlockedByPopup
-                                  | ImGuiHoveredFlags.AllowWhenBlockedByActiveItem))
+                                  | ImGuiHoveredFlags.AllowWhenBlockedByActiveItem)
+            || plugin.GameDrag.IsOver(windowMin, windowMin + ImGui.GetWindowSize()))
             plugin.Panels.KeepAlive();
 
         HandleRightButton();
@@ -117,7 +120,8 @@ public class TopBarWindow : Window
 
         var min = ImGui.GetItemRectMin();
         var max = ImGui.GetItemRectMax();
-        var hovered = ImGui.IsItemHovered();
+        // 遊戲拖曳中 hover 一定是 false（視窗不接滑鼠），改看游標位置，才能拖著東西滑過卡片打開面板
+        var hovered = ImGui.IsItemHovered() || plugin.GameDrag.IsOver(min, max);
 
         chipRects.Add((item, min, max));
 

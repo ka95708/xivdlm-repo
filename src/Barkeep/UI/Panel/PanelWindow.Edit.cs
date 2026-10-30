@@ -112,6 +112,7 @@ public partial class PanelWindow
 
     private void DrawSectionOutline(PanelSection section, Vector2 min, Vector2 max)
     {
+        // 用座標判斷而不是 ImGui 的 hover：遊戲拖曳中視窗不接滑鼠，hover 一定是 false
         var hovered = Contains(min, max, ImGui.GetMousePos());
         var gameDropHere = plugin.GameDrag.IsDragging && !section.IsAuto && hovered;
         var dragging = ReferenceEquals(section, draggingSection) && sectionDragMoved;

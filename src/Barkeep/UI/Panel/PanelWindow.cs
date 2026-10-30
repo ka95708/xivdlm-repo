@@ -137,7 +137,8 @@ public partial class PanelWindow : Window
                 | ImGuiWindowFlags.NoFocusOnAppearing
                 | ImGuiWindowFlags.NoNav
                 | ImGuiWindowFlags.NoBackground
-                | ImGuiWindowFlags.NoMove;
+                | ImGuiWindowFlags.NoMove
+                | plugin.GameDrag.PassThrough;
 
         Position = AnchoredPosition();
         PositionCondition = ImGuiCond.Always;
@@ -198,9 +199,12 @@ public partial class PanelWindow : Window
         // AllowWhenBlockedByActiveItem 不能少：按住列的那一刻，那一列變成「作用中」，
         // 沒有這個旗標的話 ImGui 會說視窗沒被滑過，面板在按下時就收起來，
         // 列等不到放開滑鼠，點擊永遠不會成立
+        // 遊戲拖曳中視窗不接滑鼠（見 GameDragDrop.PassThrough），hover 一定是 false，改看游標位置
+        var windowMin = ImGui.GetWindowPos();
         if (ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows
                                   | ImGuiHoveredFlags.AllowWhenBlockedByPopup
-                                  | ImGuiHoveredFlags.AllowWhenBlockedByActiveItem))
+                                  | ImGuiHoveredFlags.AllowWhenBlockedByActiveItem)
+            || plugin.GameDrag.IsOver(windowMin, windowMin + ImGui.GetWindowSize()))
             lastHoveredFrame = plugin.FrameCount;
 
         // 透明橋接：佔住按鈕與面板之間的間隙，hover 才不會中斷，但不畫任何東西
@@ -212,7 +216,8 @@ public partial class PanelWindow : Window
         Paint.Surface(origin, origin + size, Theme.PanelBackground);
 
         // 欄的位置固定、不隨面板寬度換行，所以放不下時要能左右捲
-        if (ImGui.BeginChild("body", size, false, ImGuiWindowFlags.NoBackground | ImGuiWindowFlags.HorizontalScrollbar))
+        if (ImGui.BeginChild("body", size, false,
+                ImGuiWindowFlags.NoBackground | ImGuiWindowFlags.HorizontalScrollbar | plugin.GameDrag.PassThrough))
             DrawBody(panel);
 
         ImGui.EndChild();
@@ -267,7 +272,7 @@ public partial class PanelWindow : Window
 
         ImGui.SetCursorScreenPos(min);
 
-        if (ImGui.BeginChild("section", placed.Size, false, ImGuiWindowFlags.NoBackground))
+        if (ImGui.BeginChild("section", placed.Size, false, ImGuiWindowFlags.NoBackground | plugin.GameDrag.PassThrough))
         {
             var origin = ImGui.GetCursorScreenPos();
             var rowSize = new Vector2(section.ItemWidth, theme.RowHeight);

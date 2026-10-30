@@ -16,8 +16,8 @@ namespace Barkeep.Game;
 ///   ID   ← AtkDragDropManager.PayloadContainer.Int2
 ///   圖示 ← 被拖的那個 AtkComponentDragDrop 自己的 GetIconId()
 ///
-/// 放開滑鼠的那一幀 ImGui 不一定收得到事件，所以落點是自己用座標找的：
-/// 畫面每一幀把可以放的位置登記進來，拖曳結束時比對滑鼠在哪一塊上。
+/// 落點是自己用座標找的：畫面每一幀把可以放的位置登記進來，拖曳結束時比對滑鼠在哪一塊上。
+/// 拖曳中插件的視窗不接滑鼠（PassThrough），遊戲才收得到「放開」，在放開的位置結束拖曳。
 /// </summary>
 public unsafe class GameDragDrop
 {
@@ -38,6 +38,25 @@ public unsafe class GameDragDrop
 
     /// <summary>遊戲正拖著某個認得出來的東西，用來顯示落點提示。</summary>
     public bool IsDragging { get; private set; }
+
+    /// <summary>滑鼠位置。遊戲拖曳中視窗不接滑鼠，但 ImGui 仍然知道游標在哪。</summary>
+    private static Vector2 MousePosition => ImGui.GetIO().MousePos;
+
+    /// <summary>
+    /// 遊戲拖曳中，插件的視窗不要接滑鼠。滑鼠在 ImGui 視窗上時 Dalamud 會把滑鼠事件攔下來，
+    /// 遊戲就收不到「放開」，以為還在拖 — 要等滑鼠離開面板才結束，那時游標已經不在落點上了。
+    /// 讓滑鼠穿過去，遊戲在放開的當下就結束拖曳，落點才會是放開的位置。
+    /// </summary>
+    public ImGuiWindowFlags PassThrough => IsDragging ? ImGuiWindowFlags.NoMouseInputs : ImGuiWindowFlags.None;
+
+    /// <summary>
+    /// 遊戲拖曳中游標在不在這塊範圍上。那時視窗不接滑鼠、ImGui 的 hover 都是 false，
+    /// 面板要不要保持開著、卡片要不要展開，改用這個判斷。
+    /// </summary>
+    public bool IsOver(Vector2 min, Vector2 max) =>
+        IsDragging
+        && MousePosition.X >= min.X && MousePosition.X <= max.X
+        && MousePosition.Y >= min.Y && MousePosition.Y <= max.Y;
 
     public void RegisterTarget(List<PanelItem> list, int index, Vector2 min, Vector2 max)
         => targets.Add((list, index, min, max));
@@ -81,18 +100,41 @@ public unsafe class GameDragDrop
         if (source == null) return;
 
         var mapped = Map(source->DragDropType);
+        var id = (uint)manager->PayloadContainer.Int2;
+
+        // 拖曳的東西換了才記一次，不要每幀都寫
+        if (source->DragDropType != lastLoggedType || id != lastLoggedId)
+        {
+            lastLoggedType = source->DragDropType;
+            lastLoggedId = id;
+            Services.Log.Debug(
+                $"[拖曳] 開始：種類={source->DragDropType}（DragDrop1={(manager->DragDrop1 != null ? manager->DragDrop1->DragDropType.ToString() : "無")}，" +
+                $"DragDrop2={(manager->DragDrop2 != null ? manager->DragDrop2->DragDropType.ToString() : "無")}）" +
+                $" Int1={manager->PayloadContainer.Int1} Int2={id} → {mapped}");
+        }
+
         if (mapped == HotbarSlotType.Empty) return;
 
         payloadType = mapped;
-        payloadId = (uint)manager->PayloadContainer.Int2;
+        payloadId = id;
         payloadIcon = manager->DragDropS != null ? manager->DragDropS->GetIconId() : 0;
     }
 
+    private DragDropType lastLoggedType;
+    private uint lastLoggedId;
+
     private void DropAtMouse(Plugin plugin)
     {
-        if (!CanDrop) return;
+        var mouse = MousePosition;
 
-        var mouse = ImGui.GetIO().MousePos;
+        // 接不住時看得出是沒抓到內容還是沒落在格子上
+        Services.Log.Debug(
+            $"[拖曳] 結束：內容={payloadType} #{payloadId} 可放={CanDrop} 滑鼠=({mouse.X:0},{mouse.Y:0}) 登記了 {targets.Count} 個落點");
+
+        lastLoggedType = default;
+        lastLoggedId = 0;
+
+        if (!CanDrop) return;
 
         foreach (var target in targets)
         {
@@ -106,8 +148,15 @@ public unsafe class GameDragDrop
             else
                 target.List[target.Index] = PanelItem.From(item);
 
+            Services.Log.Debug($"[拖曳] 已加入：{item.Label}（{item.Command}）");
             plugin.Save();
             return;
+        }
+
+        foreach (var target in targets)
+        {
+            Services.Log.Debug(
+                $"[拖曳]   落點 ({target.Min.X:0},{target.Min.Y:0})-({target.Max.X:0},{target.Max.Y:0}) index={target.Index}/{target.List.Count}");
         }
     }
 
