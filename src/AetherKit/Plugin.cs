@@ -68,7 +68,8 @@ public sealed class Plugin : IDalamudPlugin
         Toolbar = new ToolbarModule(this);
         Modules = new IModule[]
         {
-            Toolbar
+            Toolbar,
+            new AutoLoginModule(this)
         };
 
         foreach (var module in Modules)

@@ -337,6 +337,28 @@ public class TopBarConfig
     public Guid ConditionSetId { get; set; }
 }
 
+/// <summary>在角色選擇畫面看過的一個角色。</summary>
+public class KnownCharacter
+{
+    public ulong ContentId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public uint HomeWorldId { get; set; }
+    public string HomeWorld { get; set; } = string.Empty;
+}
+
+/// <summary>自動登入：開遊戲後自動按「開始遊戲」、選角色、確認登入。</summary>
+public class AutoLoginConfig
+{
+    /// <summary>要登入的角色。0 = 還沒指定，什麼都不做。</summary>
+    public ulong CharacterId { get; set; }
+
+    /// <summary>到過角色選擇畫面就會記下來的角色，給設定頁選。預設空的，理由同 RoleColumns。</summary>
+    public List<KnownCharacter> Characters { get; set; } = new();
+
+    /// <summary>每個畫面出現後先等多久再按，介面還沒準備好就按會沒反應。</summary>
+    public float DelaySeconds { get; set; } = 1f;
+}
+
 /// <summary>游標提示圖示外面要不要有動畫。</summary>
 public enum CursorAnimation
 {
