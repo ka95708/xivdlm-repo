@@ -16,5 +16,7 @@ public class Services
     [PluginService] public static IKeyState KeyState { get; private set; } = null!;
     [PluginService] public static IDataManager Data { get; private set; } = null!;
     [PluginService] public static IPlayerState PlayerState { get; private set; } = null!;
+    [PluginService] public static IGameGui GameGui { get; private set; } = null!;
+    [PluginService] public static IAddonLifecycle AddonLifecycle { get; private set; } = null!;
     [PluginService] public static IPluginLog Log { get; private set; } = null!;
 }

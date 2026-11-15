@@ -359,6 +359,34 @@ public class AutoLoginConfig
     public float DelaySeconds { get; set; } = 1f;
 }
 
+/// <summary>持有狀況：在物品資訊框裡列出這個物品放在哪裡、有幾個。</summary>
+public class ItemOwnershipConfig
+{
+    /// <summary>雇員、鞍囊、投影台的資料超過幾天沒更新就用灰色顯示。</summary>
+    public int StaleDays { get; set; } = 7;
+
+    /// <summary>在快取來源旁標示資料是多久前看到的。</summary>
+    public bool ShowAge { get; set; } = true;
+
+    /// <summary>身上以外的地方也有時，在右上角的持有數量後面補上全部的數量。</summary>
+    public bool ShowTotal { get; set; } = true;
+
+    /// <summary>完全沒有持有時也顯示一行「持有：沒有」。</summary>
+    public bool ShowWhenNone { get; set; }
+
+    /// <summary>
+    /// 雇員物品欄、鞍囊、投影台最後一次被打開的時間（UTC），鍵見 Ownership.SeenKey。
+    /// 遊戲的快取不記時間，只好自己記。這是紀錄不是偏好，不跟著匯出。
+    /// </summary>
+    public Dictionary<string, DateTime> LastSeen { get; set; } = new();
+
+    /// <summary>
+    /// 雇員 ID → 名字。遊戲的雇員資料要去過傳喚鈴才有，在那之前只讀得到 ID，
+    /// 所以讀得到名字時記下來。跟 LastSeen 一樣是紀錄，不跟著匯出。
+    /// </summary>
+    public Dictionary<ulong, string> RetainerNames { get; set; } = new();
+}
+
 /// <summary>游標提示圖示外面要不要有動畫。</summary>
 public enum CursorAnimation
 {
