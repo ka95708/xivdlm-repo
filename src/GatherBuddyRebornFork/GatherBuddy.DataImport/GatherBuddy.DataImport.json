@@ -1,0 +1,27 @@
+{
+  "Author": "The Combat Reborn Team",
+  "Name": "GatherBuddy Reborn",
+  "InternalName": "GatherbuddyReborn",
+  "RepoUrl": "https://github.com/FFXIV-CombatReborn/GatherBuddyReborn",
+  "Description": "協助查找採集點、魚類及其位置，追蹤特殊出現時段與天氣條件，並可依自訂列表自動採集。自動採集功能需要 vnavmesh。",
+  "ApplicableVersion": "any",
+  "DalamudApiLevel": 13,
+  "TestingDalamudApiLevel": 13,
+  "Tags": [
+    "採集",
+    "釣魚",
+    "採礦",
+    "園藝",
+    "天氣",
+    "鬧鐘",
+    "自動化"
+  ],
+  "CategoryTags": [
+    "Jobs",
+    "Utility"
+  ],
+  "IsTestingExclusive": false,
+  "IconUrl": "https://raw.githubusercontent.com/FFXIV-CombatReborn/RebornAssets/main/IconAssets/GBR_Icon.png",
+  "Punchline": "讓採集與釣魚更簡單。",
+  "AcceptsFeedback": true
+}

@@ -1,0 +1,17 @@
+<Project Sdk="Dalamud.NET.Sdk/13.0.0">
+    <PropertyGroup>
+        <RootNamespace>OtterGuiInternal</RootNamespace>
+        <AssemblyName>OtterGuiInternal</AssemblyName>
+        <FileVersion>1.0.0.0</FileVersion>
+        <AssemblyVersion>1.0.0.0</AssemblyVersion>
+        <Product>OtterGui</Product>
+        <Copyright>Copyright © 2025</Copyright>
+        <WarningLevel>4</WarningLevel>
+        <OutputPath>bin\$(Configuration)\</OutputPath>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <Use_DalamudPackager>false</Use_DalamudPackager>
+    </PropertyGroup>
+</Project>
+

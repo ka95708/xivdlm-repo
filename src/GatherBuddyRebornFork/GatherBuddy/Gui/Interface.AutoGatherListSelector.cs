@@ -1,0 +1,200 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
+using Dalamud.Interface;
+using Dalamud.Interface.Utility;
+using Dalamud.Bindings.ImGui;
+using GatherBuddy.AutoGather.Lists;
+using GatherBuddy.Config;
+using GatherBuddy.Classes;
+using GatherBuddy.Plugin;
+using OtterGui;
+using OtterGui.Classes;
+using OtterGui.FileSystem.Selector;
+using OtterGui.Filesystem;
+using OtterGui.Log;
+using ImRaii = OtterGui.Raii.ImRaii;
+
+namespace GatherBuddy.Gui;
+
+public partial class Interface
+{
+    private class AutoGatherListFileSystemSelector : FileSystemSelector<AutoGatherList, int>
+    {
+        private static readonly ManualOrderSortMode _manualOrderSortMode = new();
+
+        public override ISortMode<AutoGatherList> SortMode
+            => _manualOrderSortMode;
+
+        public void RefreshView()
+        {
+            SetFilterDirty();
+        }
+
+        public float SelectorWidth
+        {
+            get => GatherBuddy.Config.AutoGatherListSelectorWidth * ImGuiHelpers.GlobalScale;
+            set
+            {
+                GatherBuddy.Config.AutoGatherListSelectorWidth = value / ImGuiHelpers.GlobalScale;
+                GatherBuddy.Config.Save();
+            }
+        }
+
+        public AutoGatherListFileSystemSelector()
+            : base(_plugin.AutoGatherListsManager.FileSystem, Dalamud.Keys, new Logger(), null, "##AutoGatherListsFileSystem", false)
+        {
+            SetFilterDirty();
+            AddButton(AddListButton, 0);
+            AddButton(ImportFromClipboardButton, 10);
+            SubscribeRightClickLeaf(MoveUpContext, 50);
+            SubscribeRightClickLeaf(MoveDownContext, 60);
+            SubscribeRightClickLeaf(DeleteListContext, 100);
+            SubscribeRightClickLeaf(DuplicateListContext, 200);
+            SubscribeRightClickLeaf(ToggleListContext, 300);
+            SubscribeRightClickLeaf(ExportListContext, 400);
+            SubscribeRightClickFolder(CreateFolderContext, 500);
+            SubscribeRightClickFolder(DeleteFolderContext, 600);
+            UnsubscribeRightClickLeaf(RenameLeaf);
+        }
+
+        protected override bool FoldersDefaultOpen
+            => false;
+
+        protected override uint ExpandedFolderColor
+            => 0xFFFFFFFF;
+
+        protected override uint CollapsedFolderColor
+            => 0xFFFFFFFF;
+
+        protected override void DrawLeafName(FileSystem<AutoGatherList>.Leaf leaf, in int state, bool selected)
+        {
+            var list = leaf.Value;
+            var flag = selected ? ImGuiTreeNodeFlags.Selected | LeafFlags : LeafFlags;
+            
+            using var color = ImRaii.PushColor(ImGuiCol.Text, ColorId.DisabledText.Value(), !list.Enabled);
+            var displayName = CheckUnnamed(list.Name);
+            
+            using var _ = ImRaii.TreeNode(displayName, flag);
+            
+            if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+            {
+                _plugin.AutoGatherListsManager.ToggleList(list);
+            }
+        }
+
+        protected override int GetState(FileSystem<AutoGatherList>.IPath path)
+            => 0;
+
+        private void AddListButton(Vector2 size)
+        {
+            const string newListName = "newListName";
+            if (ImGuiUtil.DrawDisabledButton(FontAwesomeIcon.Plus.ToIconString(), size, "建立新的自動採集列表。", false, true))
+                ImGui.OpenPopup(newListName);
+
+            string name = string.Empty;
+            if (ImGuiUtil.OpenNameField(newListName, ref name) && name.Length > 0)
+            {
+                var list = new AutoGatherList() { Name = name };
+                _plugin.AutoGatherListsManager.AddList(list);
+            }
+        }
+
+        private void ImportFromClipboardButton(Vector2 size)
+        {
+            const string importName = "importListName";
+            if (ImGuiUtil.DrawDisabledButton(FontAwesomeIcon.Clipboard.ToIconString(), size, "從剪貼簿匯入自動採集列表。", false, true))
+                ImGui.OpenPopup(importName);
+
+            string name = string.Empty;
+            if (ImGuiUtil.OpenNameField(importName, ref name) && name.Length > 0)
+            {
+                var clipboardText = ImGuiUtil.GetClipboardText();
+                if (AutoGatherList.Config.FromBase64(clipboardText, out var cfg))
+                {
+                    AutoGatherList.FromConfig(cfg, out var list);
+                    list.Name = name;
+                    _plugin.AutoGatherListsManager.AddList(list);
+                }
+            }
+        }
+
+        private void MoveUpContext(FileSystem<AutoGatherList>.Leaf leaf)
+        {
+            if (ImGui.MenuItem("上移"))
+                _plugin.AutoGatherListsManager.MoveListUp(leaf.Value);
+        }
+
+        private void MoveDownContext(FileSystem<AutoGatherList>.Leaf leaf)
+        {
+            if (ImGui.MenuItem("下移"))
+                _plugin.AutoGatherListsManager.MoveListDown(leaf.Value);
+        }
+
+        private void DeleteListContext(FileSystem<AutoGatherList>.Leaf leaf)
+        {
+            if (ImGui.MenuItem("刪除列表"))
+                _plugin.AutoGatherListsManager.DeleteList(leaf.Value);
+        }
+
+        private void DuplicateListContext(FileSystem<AutoGatherList>.Leaf leaf)
+        {
+            if (ImGui.MenuItem("複製列表"))
+            {
+                var clone = leaf.Value.Clone();
+                clone.Name = $"{leaf.Value.Name}（副本）";
+                _plugin.AutoGatherListsManager.AddList(clone, leaf.Parent);
+            }
+        }
+
+        private void ToggleListContext(FileSystem<AutoGatherList>.Leaf leaf)
+        {
+            var list = leaf.Value;
+            if (ImGui.MenuItem(list.Enabled ? "停用" : "啟用"))
+                _plugin.AutoGatherListsManager.ToggleList(list);
+        }
+
+        private void ExportListContext(FileSystem<AutoGatherList>.Leaf leaf)
+        {
+            if (ImGui.MenuItem("匯出至剪貼簿"))
+            {
+                try
+                {
+                    var config = new AutoGatherList.Config(leaf.Value);
+                    var base64 = config.ToBase64();
+                    ImGui.SetClipboardText(base64);
+                    Communicator.PrintClipboardMessage("自動採集列表", leaf.Value.Name);
+                }
+                catch (Exception e)
+                {
+                    Communicator.PrintClipboardMessage("自動採集列表", leaf.Value.Name, e);
+                }
+            }
+        }
+
+        private void CreateFolderContext(FileSystem<AutoGatherList>.Folder folder)
+        {
+            const string newFolderName = "newFolderName";
+            if (ImGui.MenuItem("建立子資料夾"))
+                ImGui.OpenPopup(newFolderName);
+
+            string name = string.Empty;
+            if (ImGuiUtil.OpenNameField(newFolderName, ref name) && name.Length > 0)
+            {
+                _plugin.AutoGatherListsManager.CreateFolder(name, folder);
+            }
+        }
+
+        private void DeleteFolderContext(FileSystem<AutoGatherList>.Folder folder)
+        {
+            if (folder.IsRoot)
+                return;
+
+            if (ImGui.MenuItem("刪除資料夾"))
+            {
+                _plugin.AutoGatherListsManager.DeleteFolder(folder);
+            }
+        }
+    }
+}

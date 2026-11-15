@@ -1,0 +1,65 @@
+<Project Sdk="Dalamud.CN.NET.Sdk/13.1.0">
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows7.0</TargetFramework>
+    <LangVersion>preview</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <RootNamespace>GatherBuddy</RootNamespace>
+    <AssemblyName>GatherBuddyReborn</AssemblyName>
+    <Version>7.3.5.701</Version>
+    <Company>SoftOtter</Company>
+    <Product>GatherBuddy</Product>
+    <Copyright>Copyright © 2024</Copyright>
+    <Deterministic>true</Deterministic>
+    <OutputType>Library</OutputType>
+    <WarningLevel>4</WarningLevel>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <CopyLocalLockfileAssemblies>true</CopyLocalLockfileAssemblies>
+    <Configurations>Debug;Release</Configurations>
+    <Platforms>x64</Platforms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Plugin\AutoGather.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="CustomInfo\IlvConvertTable.csv" />
+    <None Remove="CustomInfo\world_locations.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="CustomInfo\world_locations.json" />
+    <None Remove="CustomInfo\node_offsets.json" />
+    <EmbeddedResource Include="CustomInfo\node_offsets.json" />
+    <None Remove="CustomInfo\honk-sound.wav" />
+    <EmbeddedResource Include="CustomInfo\honk-sound.wav" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CSCore" Version="1.2.1.2" />
+    <PackageReference Include="MessagePack" Version="3.1.8" />
+  </ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\ECommons\ECommons\ECommons.csproj" />
+	  <ProjectReference Include="..\GatherBuddy.GameData\GatherBuddy.GameData.csproj" />
+	  <ProjectReference Include="..\GatherBuddy.Models\GatherBuddy.Models.csproj" />
+	  <ProjectReference Include="..\OtterGui\OtterGui.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="AutoGather\Tasks\" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <EmbeddedResource Include="CustomInfo\IlvConvertTable.csv" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <EmbeddedResource Include="CustomInfo\fish_records.json" />
+	</ItemGroup>
+</Project>
