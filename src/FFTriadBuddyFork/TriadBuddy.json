@@ -1,0 +1,10 @@
+{
+	"Author": "MgAl2O4",
+	"Name": "TriadBuddy",
+	"Punchline": "九宮幻卡對戰求解與牌組輔助。",
+	"Description": "九宮幻卡 NPC 對戰求解器，可提示下一步、分析牌組並擴充卡片收藏資訊。\n本地修改版：可開關的自動出牌與自動循環對戰（只限 NPC）、不用開幻卡列表的卡片收集頁、傳送並導航到 NPC（需要 vnavmesh）。",
+	"InternalName": "TriadBuddy",
+	"ApplicableVersion": "any",
+	"RepoUrl": "https://github.com/ka95708/xivdlm-repo",
+	"Tags": [ "solver", "triad", "triple triad" ]
+}

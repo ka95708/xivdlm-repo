@@ -1,0 +1,43 @@
+﻿<Project Sdk="Dalamud.NET.Sdk/13.0.0">
+  <PropertyGroup>
+    <Authors>MgAl2O4</Authors>
+    <Version>1.13.0.201</Version>
+    <Description>Triple triad solver</Description>
+    <Copyright>(c) 2025 MgAl2O4</Copyright>
+    <PackageProjectUrl>https://github.com//MgAl2O4/FFTriadBuddyDalamud</PackageProjectUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="assets\loc\de.json" />
+    <None Remove="assets\loc\en.json" />
+    <None Remove="assets\loc\es.json" />
+    <None Remove="assets\loc\fr.json" />
+    <None Remove="assets\loc\ja.json" />
+	<None Remove="assets\loc\ko.json" />
+	<None Remove="assets\loc\zh.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="assets\loc\de.json" />
+    <EmbeddedResource Include="assets\loc\en.json" />
+    <EmbeddedResource Include="assets\loc\es.json" />
+    <EmbeddedResource Include="assets\loc\fr.json" />
+    <EmbeddedResource Include="assets\loc\ja.json" />
+	<EmbeddedResource Include="assets\loc\ko.json" />
+	<EmbeddedResource Include="assets\loc\zh.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="TriadBuddy.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <Target Name="CopyAssets" BeforeTargets="Build">
+    <Copy SourceFiles="$(ProjectDir)\assets\icon.png" DestinationFolder="$(OutDir)\images" />
+    <Copy SourceFiles="$(ProjectDir)\assets\image1.png" DestinationFolder="$(OutDir)\images" />
+    <Copy SourceFiles="$(ProjectDir)\assets\image2.png" DestinationFolder="$(OutDir)\images" />
+    <Copy SourceFiles="$(ProjectDir)\assets\image3.png" DestinationFolder="$(OutDir)\images" />
+  </Target>
+
+</Project>

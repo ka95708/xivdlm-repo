@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.31424.327
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TriadBuddy", "TriadBuddy.csproj", "{62DB4DE9-25F8-4523-B008-417EF61088E4}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{62DB4DE9-25F8-4523-B008-417EF61088E4}.Debug|x64.ActiveCfg = Debug|x64
+		{62DB4DE9-25F8-4523-B008-417EF61088E4}.Debug|x64.Build.0 = Debug|x64
+		{62DB4DE9-25F8-4523-B008-417EF61088E4}.Release|x64.ActiveCfg = Release|x64
+		{62DB4DE9-25F8-4523-B008-417EF61088E4}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C307E9A7-265A-47C9-9ADF-6190A84D75E1}
+	EndGlobalSection
+EndGlobal
