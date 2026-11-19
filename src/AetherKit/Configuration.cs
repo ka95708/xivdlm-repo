@@ -71,6 +71,8 @@ public class Configuration : IPluginConfiguration
 
     public ItemOwnershipConfig ItemOwnership { get; set; } = new();
 
+    public PluginLogConfig PluginLog { get; set; } = new();
+
     /// <summary>
     /// 停用的模組（存模組的 Id）。記停用的而不是啟用的：之後新增的模組預設就是開著，
     /// 不用每加一個模組就改設定檔版本。

@@ -29,6 +29,8 @@ public sealed class Plugin : IDalamudPlugin
 
     public ToolbarModule Toolbar { get; }
 
+    public PluginLogModule PluginLog { get; }
+
     /// <summary>所有模組，依管理視窗裡顯示的順序。新增模組就在這裡加一行。</summary>
     public IReadOnlyList<IModule> Modules { get; }
 
@@ -70,7 +72,8 @@ public sealed class Plugin : IDalamudPlugin
         {
             Toolbar,
             new AutoLoginModule(this),
-            new OwnershipModule(this)
+            new OwnershipModule(this),
+            PluginLog = new PluginLogModule(this)
         };
 
         foreach (var module in Modules)
@@ -85,7 +88,7 @@ public sealed class Plugin : IDalamudPlugin
 
         Services.Commands.AddHandler(MainCommand, new CommandInfo(OnCommand)
         {
-            HelpMessage = "開啟 AetherKit 設定視窗。／aetherkit edit 切換工具列的編輯模式。"
+            HelpMessage = "開啟 AetherKit 設定視窗。／aetherkit edit 切換工具列的編輯模式，／aetherkit log 開啟插件訊息紀錄。"
         });
         Services.Commands.AddHandler(ShortCommand, new CommandInfo(OnCommand)
         {
@@ -204,6 +207,18 @@ public sealed class Plugin : IDalamudPlugin
 
             Toolbar.EditMode = !Toolbar.EditMode;
             Services.Chat.Print(Toolbar.EditMode ? "[AetherKit] 已進入編輯模式。" : "[AetherKit] 已離開編輯模式。");
+            return;
+        }
+
+        if (args.Trim().Equals("log", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!IsEnabled(PluginLog))
+            {
+                Services.Chat.PrintError("[AetherKit] 插件訊息模組沒有啟用，請先在設定裡打開。");
+                return;
+            }
+
+            PluginLog.OpenWindow();
             return;
         }
 

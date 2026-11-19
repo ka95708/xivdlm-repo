@@ -387,6 +387,16 @@ public class ItemOwnershipConfig
     public Dictionary<ulong, string> RetainerNames { get; set; } = new();
 }
 
+/// <summary>插件訊息：插件印到聊天欄的訊息不顯示，改收進訊息紀錄視窗。</summary>
+public class PluginLogConfig
+{
+    /// <summary>插件印了錯誤訊息時，跳 Dalamud 的通知。</summary>
+    public bool NotifyErrors { get; set; } = true;
+
+    /// <summary>這些來源（訊息開頭的 [插件名稱]）照樣顯示在聊天欄。預設空的，全部都收起來。</summary>
+    public List<string> ShowInChat { get; set; } = new();
+}
+
 /// <summary>游標提示圖示外面要不要有動畫。</summary>
 public enum CursorAnimation
 {
