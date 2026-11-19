@@ -23,11 +23,13 @@ namespace TriadBuddyPlugin
             Status,
             Auto,
             Collection,
+            Optimizer,
             Config,
         }
 
         private readonly PluginPanelAuto autoPanel;
         private readonly PluginPanelCollection collectionPanel;
+        private readonly PluginWindowDeckOptimize optimizer;
         private Tab? requestedTab;
 
         private bool showDebugDetails;
@@ -66,12 +68,13 @@ namespace TriadBuddyPlugin
         private string? locConfigOptimizerCPUHint;
         private bool hasCachedLocStrings;
 
-        public PluginWindowStatus(UIReaderTriadGame uiReaderGame, UIReaderTriadPrep uiReaderPrep, PluginPanelAuto autoPanel, PluginPanelCollection collectionPanel) : base("Triad Buddy")
+        public PluginWindowStatus(UIReaderTriadGame uiReaderGame, UIReaderTriadPrep uiReaderPrep, PluginPanelAuto autoPanel, PluginPanelCollection collectionPanel, PluginWindowDeckOptimize optimizer) : base("Triad Buddy")
         {
             this.uiReaderGame = uiReaderGame;
             this.uiReaderPrep = uiReaderPrep;
             this.autoPanel = autoPanel;
             this.collectionPanel = collectionPanel;
+            this.optimizer = optimizer;
 
             IsOpen = false;
 
@@ -125,10 +128,16 @@ namespace TriadBuddyPlugin
         {
             showDebugDetails = false;
             collectionPanel.Refresh();
+            if (currentTab == Tab.Optimizer)
+            {
+                optimizer.OnTabShown();
+            }
         }
 
         public override void OnClose()
         {
+            // 跟原本關掉最佳化視窗一樣：中止還在跑的最佳化、拿掉牌組編輯畫面的提示
+            optimizer.OnClose();
         }
 
         /// <summary>打開視窗並切到指定分頁；已經開著又在同一頁時就關掉（給指令切換用）。</summary>
@@ -163,6 +172,7 @@ namespace TriadBuddyPlugin
             DrawTab(Tab.Status, "狀態", DrawStatus);
             DrawTab(Tab.Auto, "自動對戰", autoPanel.Draw);
             DrawTab(Tab.Collection, "卡片收集", collectionPanel.Draw);
+            DrawTab(Tab.Optimizer, "牌組最佳化", DrawOptimizer);
             DrawTab(Tab.Config, "設定", DrawConfiguration);
 
             requestedTab = null;
@@ -176,10 +186,19 @@ namespace TriadBuddyPlugin
             {
                 if (currentTab != tab)
                 {
+                    if (currentTab == Tab.Optimizer)
+                    {
+                        optimizer.OnTabHidden();
+                    }
+
                     currentTab = tab;
                     if (tab == Tab.Collection)
                     {
                         collectionPanel.OnShown();
+                    }
+                    else if (tab == Tab.Optimizer)
+                    {
+                        optimizer.OnTabShown();
                     }
                 }
 
@@ -187,6 +206,23 @@ namespace TriadBuddyPlugin
                 draw();
                 ImGui.EndTabItem();
             }
+        }
+
+        private void DrawOptimizer()
+        {
+            if (!optimizer.CanRunOptimizer())
+            {
+                ImGui.TextColored(colorErr, "讀不到你擁有的卡片，無法最佳化");
+                return;
+            }
+
+            if (!optimizer.HasNpc)
+            {
+                ImGui.TextWrapped("請從「卡片收集」分頁的 NPC 資訊，或對戰前牌組評估視窗的最佳化按鈕選擇對手。");
+                return;
+            }
+
+            optimizer.Draw();
         }
 
         private void DrawConfiguration()

@@ -95,15 +95,17 @@ namespace TriadBuddyPlugin
 
             // prep UI
             overlays = new PluginOverlays(uiReaderGame, uiReaderPrep);
-            statusWindow = new PluginWindowStatus(uiReaderGame, uiReaderPrep, new PluginPanelAuto(autoTriad), new PluginPanelCollection(npcTravel));
+            // fork：牌組最佳化不再是獨立視窗，畫在主視窗的「牌組最佳化」分頁裡
+            var deckOptimizerWindow = new PluginWindowDeckOptimize(uiReaderDeckEdit);
+            statusWindow = new PluginWindowStatus(uiReaderGame, uiReaderPrep, new PluginPanelAuto(autoTriad),
+                new PluginPanelCollection(npcTravel, deckOptimizerWindow), deckOptimizerWindow);
             windowSystem.AddWindow(statusWindow);
+            deckOptimizerWindow.OnOpenRequested += () => statusWindow.OpenTab(PluginWindowStatus.Tab.Optimizer);
 
             var npcStatsWindow = new PluginWindowNpcStats(statTracker);
-            var deckOptimizerWindow = new PluginWindowDeckOptimize(uiReaderDeckEdit);
             var deckEvalWindow = new PluginWindowDeckEval(uiReaderPrep, deckOptimizerWindow, npcStatsWindow);
             deckOptimizerWindow.OnConfigRequested += () => OnOpenConfig();
             windowSystem.AddWindow(deckEvalWindow);
-            windowSystem.AddWindow(deckOptimizerWindow);
             windowSystem.AddWindow(npcStatsWindow);
 
             windowSystem.AddWindow(new PluginWindowCardInfo(uiReaderCardList));
@@ -137,7 +139,7 @@ namespace TriadBuddyPlugin
             statusCommand.HelpMessage = string.Format(Localization.Localize("Cmd_Status", "Show state of {0} plugin"), Name) + AutoCommandHelp;
         }
 
-        private const string AutoCommandHelp = "\n/triadbuddy auto → 自動對戰分頁\n/triadbuddy cards → 卡片收集分頁";
+        private const string AutoCommandHelp = "\n/triadbuddy auto → 自動對戰分頁\n/triadbuddy cards → 卡片收集分頁\n/triadbuddy deck → 牌組最佳化分頁";
 
         public void Dispose()
         {
@@ -154,6 +156,7 @@ namespace TriadBuddyPlugin
             {
                 "auto" => PluginWindowStatus.Tab.Auto,
                 "cards" => PluginWindowStatus.Tab.Collection,
+                "deck" => PluginWindowStatus.Tab.Optimizer,
                 "config" => PluginWindowStatus.Tab.Config,
                 _ => PluginWindowStatus.Tab.Status,
             };

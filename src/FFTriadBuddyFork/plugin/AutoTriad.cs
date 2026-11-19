@@ -47,7 +47,7 @@ namespace TriadBuddyPlugin
             Result,
         }
 
-        private static readonly string[] ObservedAddons = { "TripleTriad", "TripleTriadRequest", "TripleTriadSelDeck", "TripleTriadResult", "SelectYesno" };
+        private static readonly string[] ObservedAddons = { "TripleTriad", "TripleTriadRequest", "TripleTriadSelDeck", "TripleTriadResult", "SelectYesno", "GSInfoEditDeck", "GSInfoCardDeck", "GoldSaucerInfo" };
 
         private static readonly TimeSpan MoveConfirmTimeout = TimeSpan.FromSeconds(4);
         private static readonly TimeSpan LoopIdleTimeout = TimeSpan.FromSeconds(25);
@@ -204,8 +204,17 @@ namespace TriadBuddyPlugin
             if (autoLoop)
             {
                 TickLoop(now);
+
+                // 目標卡的狀態（學會了、背包有）定期重讀，面板才會即時更新
+                if (LoopNpc != null && now >= nextTargetRefresh)
+                {
+                    nextTargetRefresh = now + TimeSpan.FromSeconds(2);
+                    RefreshTargets();
+                }
             }
         }
+
+        private DateTime nextTargetRefresh;
 
         // ─────────────────────────────────────────────────────────
         // 自動出牌
@@ -461,7 +470,8 @@ namespace TriadBuddyPlugin
                 return;
             }
 
-            var npc = SolverUtils.solverGame?.currentNpc;
+            // 對局視窗剛出現時，讀取器還沒讀到新的一局，currentNpc 可能是上一局的
+            var npc = uiReaderGame.IsVisible && uiReaderGame.currentState != null ? SolverUtils.solverGame?.currentNpc : null;
             if (npc != null && !CheckLoopNpc(npc))
             {
                 return;
@@ -472,7 +482,15 @@ namespace TriadBuddyPlugin
 
         private void TickLoopRequest(DateTime now)
         {
-            var npc = SolverUtils.solverPreGameDecks?.preGameNpc;
+            // 不能用 solverPreGameDecks.preGameNpc：它只在牌組評估重算時才更新，可能還是上一位 NPC。
+            // 介面讀取器每 0.5 秒才檢查一次視窗，視窗剛出現時 cachedState 也還是舊的，
+            // 所以要等讀取器確認挑戰視窗（HasMatchRequestUI）後，再用它剛讀到的名字比對 NPC。
+            TriadNpc? npc = null;
+            if (uiReaderPrep.HasMatchRequestUI && !string.IsNullOrEmpty(uiReaderPrep.cachedState.npc))
+            {
+                npc = new GameUIParser().ParseNpc(uiReaderPrep.cachedState.npc, false);
+            }
+
             if (npc == null)
             {
                 LoopStatus = "讀取 NPC 中…";

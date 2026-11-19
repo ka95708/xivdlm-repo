@@ -196,6 +196,30 @@ namespace TriadBuddyPlugin
             IsOpen = true;
             uiReaderDeckEdit?.OnDeckOptimizerVisible(IsOpen);
             uiReaderDeckEdit?.SetHighlightedCards(shownCardIds);
+
+            // fork：畫在主視窗的分頁裡，請主視窗切過來
+            OnOpenRequested?.Invoke();
+        }
+
+        // ── fork：嵌在主視窗分頁裡用 ──
+
+        public event Action? OnOpenRequested;
+
+        public bool HasNpc => npc != null;
+
+        /// <summary>切到牌組最佳化分頁：恢復牌組編輯畫面的提示。</summary>
+        public void OnTabShown()
+        {
+            IsOpen = true;
+            uiReaderDeckEdit?.OnDeckOptimizerVisible(true);
+            uiReaderDeckEdit?.SetHighlightedCards(shownCardIds);
+        }
+
+        /// <summary>切到別的分頁：拿掉提示，但讓最佳化繼續跑（要算好幾分鐘）。</summary>
+        public void OnTabHidden()
+        {
+            IsOpen = false;
+            uiReaderDeckEdit?.OnDeckOptimizerVisible(false);
         }
 
         private IDalamudTextureWrap? GetCardTexture(int cardId)
@@ -348,6 +372,28 @@ namespace TriadBuddyPlugin
                 if (ImGui.Button(locOptimizeStart, new Vector2(-1, 0)))
                 {
                     StartOptimizer();
+                }
+
+                // fork：把顯示中的 5 張卡直接放進正在編輯的牌組
+                bool canApply = shownCardIds != null && shownCardIds.Length == 5 && Array.TrueForAll(shownCardIds, id => id > 0) &&
+                    uiReaderDeckEdit != null && uiReaderDeckEdit.IsVisible && !uiReaderDeckEdit.IsApplyingDeck;
+                if (!canApply)
+                {
+                    ImGui.BeginDisabled();
+                }
+
+                if (ImGui.Button("套用到正在編輯的牌組（之後記得按存檔）", new Vector2(-1, 0)) && canApply)
+                {
+                    uiReaderDeckEdit!.ApplyDeck(shownCardIds!);
+                }
+
+                if (!canApply)
+                {
+                    ImGui.EndDisabled();
+                    if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                    {
+                        ImGui.SetTooltip("打開遊戲的牌組編輯畫面，並且算出牌組後才能套用");
+                    }
                 }
             }
             else

@@ -3,6 +3,7 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using MgAl2O4.Utils;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 
@@ -147,6 +148,211 @@ namespace TriadBuddyPlugin
                 searchSyncBlinkRemaining = 1.0f;
             }
         }
+
+        /// <summary>
+        /// fork：把 5 張卡放進正在編輯的牌組。放卡的格式是從手動操作錄下來的：
+        ///   回呼 [Int 11, Int 欄位(0~4), Int 卡片編號, Undefined, Undefined]（不用翻到卡片所在的那一頁）
+        /// 實測：
+        ///   - 回呼要跟遊戲一樣送滿 5 個值，只送 3 個時介面讀到殘留記憶體，只有第一下生效。
+        ///   - 同一幀連送好幾個，遊戲只處理第一個，所以每一步間隔一下。
+        ///   - 某張卡已經在別格時再放，遊戲會跳「重複」錯誤；清空欄位不管是送回呼 [13, 欄位]
+        ///     還是模擬點擊事件都沒有用。
+        /// 所以先讀出牌組目前的 5 張卡，再排出不會撞到重複、也不會超過星數限制
+        /// （5 星最多 1 張、4 星加 5 星最多 2 張）的放卡順序。
+        /// 不會自動存檔（存檔是 [Int 10]），讓玩家確認後自己按。
+        /// </summary>
+        public unsafe void ApplyDeck(int[] cardIds)
+        {
+            if (applyRunning || cardIds.Length != 5)
+            {
+                return;
+            }
+
+            var addon = (AtkUnitBase*)Service.gameGui.GetAddonByName(GetAddonName(), 1).Address;
+            if (addon == null || !addon->IsVisible)
+            {
+                return;
+            }
+
+            var current = ReadDeckSlots(addon);
+            if (current == null)
+            {
+                Service.chatGui.PrintError("[TriadBuddy] 讀不到牌組目前的卡片，無法套用");
+                return;
+            }
+
+            var (steps, problem) = PlanDeckSteps(current, cardIds);
+            Service.logger.Info($"apply deck: current {string.Join(",", current)} -> target {string.Join(",", cardIds)}, steps {string.Join(" ", steps.Select(s => $"{s.slot}:{s.card}"))}");
+
+            if (steps.Count == 0)
+            {
+                Service.chatGui.Print(problem ?? "[TriadBuddy] 牌組已經是這 5 張卡了");
+                return;
+            }
+
+            applyRunning = true;
+            for (int idx = 0; idx < steps.Count; idx++)
+            {
+                var step = steps[idx];
+                bool isLast = idx == steps.Count - 1;
+
+                Service.framework.RunOnTick(() =>
+                {
+                    var addonNow = (AtkUnitBase*)Service.gameGui.GetAddonByName(GetAddonName(), 1).Address;
+                    if (applyRunning && addonNow != null && addonNow->IsVisible)
+                    {
+                        var values = stackalloc AtkValue[5];
+                        for (int i = 0; i < 5; i++)
+                        {
+                            values[i] = default;
+                        }
+
+                        values[0].SetInt(11);
+                        values[1].SetInt(step.slot);
+                        values[2].SetInt(step.card);
+                        addonNow->FireCallback(5, values, true);
+                    }
+                    else
+                    {
+                        // 牌組編輯畫面被關掉了，後面的步驟都不做
+                        applyRunning = false;
+                    }
+
+                    if (isLast && applyRunning)
+                    {
+                        applyRunning = false;
+                        Service.chatGui.Print(problem ?? "[TriadBuddy] 已套用牌組，確認後請按存檔");
+                    }
+                }, TimeSpan.FromMilliseconds(ApplyStepMs * idx));
+            }
+        }
+
+        /// <summary>
+        /// 讀出牌組 5 個欄位目前的卡片編號（空格是 0）。欄位是拖曳元件，點擊事件的參數是 1~5
+        /// （手動清空時錄到的 DragDropClick 參數），用這個分辨是第幾格；卡片則看元件裡的卡片圖示。
+        /// 讀不到 5 格就回傳 null。
+        /// </summary>
+        private static unsafe int[]? ReadDeckSlots(AtkUnitBase* addon)
+        {
+            var result = new int[5];
+            var found = new bool[5];
+            var cardDB = FFTriadBuddy.TriadCardDB.Get();
+
+            for (int i = 0; i < addon->UldManager.NodeListCount; i++)
+            {
+                var node = addon->UldManager.NodeList[i];
+                if (node == null || (int)node->Type < 1000)
+                {
+                    continue;
+                }
+
+                int slot = -1;
+                for (var evt = node->AtkEventManager.Event; evt != null; evt = evt->NextEvent)
+                {
+                    if (evt->State.EventType == AtkEventType.DragDropClick && evt->Param >= 1 && evt->Param <= 5)
+                    {
+                        slot = (int)evt->Param - 1;
+                        break;
+                    }
+                }
+
+                if (slot < 0 || found[slot])
+                {
+                    continue;
+                }
+
+                found[slot] = true;
+                var children = GUINodeUtils.GetAllChildNodes(node);
+                if (children == null)
+                {
+                    continue;
+                }
+
+                foreach (var child in children)
+                {
+                    var texPath = GUINodeUtils.GetNodeTexturePath(child);
+                    if (!string.IsNullOrEmpty(texPath) && texPath.Contains("088000/"))
+                    {
+                        var card = cardDB.FindByTexture(texPath);
+                        if (card != null && card.IsValid())
+                        {
+                            result[slot] = card.Id;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            return found.All(x => x) ? result : null;
+        }
+
+        /// <summary>
+        /// 排出放卡順序：每次挑一格「目標卡沒有在別格、放下去星數也不會超過限制」的放。
+        /// 剩下的只差在順序時（5 張卡相同但位置不同），遊戲不讓重複放，沒辦法調，就保持原樣並說明。
+        /// </summary>
+        private static (List<(int slot, int card)> steps, string? problem) PlanDeckSteps(int[] current, int[] target)
+        {
+            var cardDB = FFTriadBuddy.TriadCardDB.Get();
+            var deck = (int[])current.Clone();
+            var steps = new List<(int slot, int card)>();
+
+            bool IsValid(int[] d)
+            {
+                int num5 = 0, num45 = 0;
+                foreach (var id in d)
+                {
+                    var card = id > 0 ? cardDB.FindById(id) : null;
+                    if (card == null) continue;
+                    if (card.Rarity == FFTriadBuddy.ETriadCardRarity.Legendary) { num5++; num45++; }
+                    else if (card.Rarity == FFTriadBuddy.ETriadCardRarity.Epic) { num45++; }
+                }
+
+                return num5 <= 1 && num45 <= 2;
+            }
+
+            for (int guard = 0; guard < 10; guard++)
+            {
+                var mismatched = Enumerable.Range(0, 5).Where(i => deck[i] != target[i]).ToList();
+                if (mismatched.Count == 0)
+                {
+                    return (steps, null);
+                }
+
+                int pick = -1;
+                foreach (var slot in mismatched)
+                {
+                    if (Array.IndexOf(deck, target[slot]) >= 0)
+                    {
+                        continue;       // 目標卡還在別格，現在放會重複
+                    }
+
+                    var test = (int[])deck.Clone();
+                    test[slot] = target[slot];
+                    if (IsValid(test))
+                    {
+                        pick = slot;
+                        break;
+                    }
+                }
+
+                if (pick < 0)
+                {
+                    bool onlyOrder = mismatched.All(slot => Array.IndexOf(deck, target[slot]) >= 0);
+                    return (steps, onlyOrder ?
+                        "[TriadBuddy] 卡片已經一樣，只有順序不同（遊戲不能直接換位置），保留目前順序；確認後請按存檔" :
+                        "[TriadBuddy] 有幾張卡因為星數限制放不進去，請手動調整");
+                }
+
+                deck[pick] = target[pick];
+                steps.Add((pick, target[pick]));
+            }
+
+            return (steps, null);
+        }
+
+        private const int ApplyStepMs = 300;
+        private bool applyRunning;
+        public bool IsApplyingDeck => applyRunning;
 
         public unsafe bool SetPageAndGridView(int pageIndex, int cellIndex)
         {

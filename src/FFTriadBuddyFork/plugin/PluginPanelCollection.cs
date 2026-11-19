@@ -55,10 +55,12 @@ namespace TriadBuddyPlugin
         private NpcEntry? selectedNpc;
 
         private readonly NpcTravel travel;
+        private readonly PluginWindowDeckOptimize optimizer;
 
-        public PluginPanelCollection(NpcTravel travel)
+        public PluginPanelCollection(NpcTravel travel, PluginWindowDeckOptimize optimizer)
         {
             this.travel = travel;
+            this.optimizer = optimizer;
         }
 
         /// <summary>切到這個分頁時重新讀一次。</summary>
@@ -187,8 +189,17 @@ namespace TriadBuddyPlugin
             npcs.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.CurrentCulture));
         }
 
+        private DateTime nextAutoRefresh;
+
         public void Draw()
         {
+            // 分頁開著時每 3 秒重讀一次（學會卡片、拿到卡片道具都會反映出來）
+            if (DateTime.Now >= nextAutoRefresh)
+            {
+                nextAutoRefresh = DateTime.Now + TimeSpan.FromSeconds(3);
+                Refresh();
+            }
+
             if (ImGuiComponents.IconButton(FontAwesomeIcon.Sync))
             {
                 Refresh();
@@ -301,6 +312,17 @@ namespace TriadBuddyPlugin
                 if (ImGui.IsItemHovered())
                 {
                     ImGui.SetTooltip(isTarget ? "停止" : "傳送並走過去（需要 vnavmesh；城內以太之光需要 Lifestream）");
+                }
+
+                ImGui.SameLine();
+                if (ImGuiComponents.IconButton($"##opt{entry.Info.npcId}", FontAwesomeIcon.LayerGroup))
+                {
+                    // 從這裡開不知道對局地點的地區規則，只帶入 NPC 自己的規則
+                    optimizer.SetupAndOpen(entry.Npc, new List<TriadGameModifier>());
+                }
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetTooltip("用這個 NPC 最佳化牌組（不含地區規則）");
                 }
 
                 ImGui.SameLine();
