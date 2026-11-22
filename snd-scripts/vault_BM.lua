@@ -8,9 +8,10 @@
 
   使用說明:
     1) 設定循環次數，修改 LOOP_COUNT = (你想要打幾次副本)
+    2) (選填) 填 GEARSET_NAME = "青魔套裝名稱",開場會自動切換;留空則不切換
 
   腳本流程:
-    [開場一次] 施放非凡防禦 → 勾「解除限制」+「等級同步」→ 選定副本 (id = 34)
+    [開場一次] 等角色 / vnavmesh 就緒 → 切換套裝 → 施放非凡防禦 → 勾「解除限制」+「等級同步」→ 選定副本 (id = 34)
     [每輪循環] 檢查耐久 → 排隊進場 → 跑循環 → 退本
 
   必備技能:
@@ -40,6 +41,13 @@ local ENTRY_WAIT_SEC  = 300   -- 等媒合 + 進場的最長秒數
 local MOVE_TIMEOUT    = 60    -- 單段路徑最長等待秒數 (有 IPC 時)
 local MOVE_FALLBACK   = 12    -- 無 IPC 時每段移動的固定等待秒數
 local REPAIR_THRESHOLD = 20   -- 任一裝備耐久低於此 % 就「修理全部」(自助修理,需身上有暗物質)
+local NAV_READY_TIMEOUT = 120 -- 等 vnavmesh 導航網格建好的最長秒數 (遊戲剛開時第一次建網格較慢)
+local ARRIVE_DIST     = 3.0   -- 離目標點多近算抵達 (yalm);沒到就重下 moveto
+
+-- 開場自動切換套裝 (職業)
+--   填遊戲內套裝名稱 (完全一致優先,否則取第一個包含此字串的套裝);
+--   留空 "" 或 nil 則不切換。目前職業已與該套裝相同時也會跳過。
+local GEARSET_NAME    = "青魔道士"
 
 -- 自動選本
 local DUTY_NAME   = "聖教中樞伊修加爾德教皇廳"  -- 要打的副本名 (需與遊戲內完全一致或為其片段)
@@ -191,7 +199,43 @@ end
 -- 移動 (vnavmesh)
 --   使用 /vnav 文字指令,以 pcall 嘗試 IPC 偵測抵達;
 --   若 IPC 不可用則退回固定時間等待。
+--
+--   ※ 遊戲剛啟動時 vnavmesh 還在載入 / 建導航網格 (IsReady = false),
+--     這時下 /vnav moveto 會直接被丟掉,角色站在原地,後面的技能就全部失敗。
+--     所以移動前先等 IsReady,移動後再用座標確認真的走到了。
 ----------------------------------------------------------------
+
+-- vnavmesh 是否就緒;IPC 不可用時回傳 nil (無法判斷)
+local function navReady()
+    local ok, v = pcall(function() return IPC.vnavmesh.IsReady() end)
+    if not ok then return nil end
+    return v == true
+end
+
+-- 等 vnavmesh 網格建好;IPC 不可用就略過 (回傳 true)
+local function waitNavReady(timeout)
+    if navReady() == nil then return true end
+    if navReady() then return true end
+    echo("等待 vnavmesh 建立導航網格...")
+    if waitUntil(function() return navReady() end, timeout or NAV_READY_TIMEOUT, 0.5) then
+        echo("vnavmesh 就緒")
+        return true
+    end
+    echo("vnavmesh 等待逾時,仍繼續嘗試")
+    return false
+end
+
+-- 角色到 (x,y,z) 的距離;讀不到回傳 nil
+local function distTo(x, y, z)
+    local ok, d = pcall(function()
+        local p = Entity.Player.Position
+        local dx, dy, dz = p.X - x, p.Y - y, p.Z - z
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
+    end)
+    if ok then return d end
+    return nil
+end
+
 -- 啟動移動,不等抵達
 local function startMoveTo(x, y, z)
     yield(string.format("/vnav moveto %.2f %.2f %.2f", x, y, z))
@@ -218,10 +262,21 @@ local function waitArrival()
 end
 
 -- 阻塞式移動到指定點
+--   抵達後用座標確認;沒走到 (moveto 被丟掉 / 網格未就緒) 就等網格再重下,最多 3 次
 local function moveTo(x, y, z)
-    startMoveTo(x, y, z)
-    wait(0.3)
-    waitArrival()
+    for attempt = 1, 3 do
+        waitNavReady()
+        startMoveTo(x, y, z)
+        -- 等尋路真的開始 (有 IPC 才等得到;沒有就照舊)
+        waitUntil(function()
+            return IPC.vnavmesh.IsRunning() or IPC.vnavmesh.PathfindInProgress()
+        end, 2, 0.1)
+        waitArrival()
+        local d = distTo(x, y, z)
+        if d == nil or d <= ARRIVE_DIST then return end
+        echo(string.format("未抵達目標點 (距離 %.1f),重新移動 (%d/3)", d, attempt))
+        wait(1)
+    end
 end
 
 local function stopMove()
@@ -232,6 +287,7 @@ end
 --   checkFn() 回傳 true → 執行 onTrigger() 然後重新前往原目標,並回傳 true
 --   checkFn() 回傳 false → 等抵達後回傳 false
 local function moveToWithCheck(x, y, z, delay, checkFn, onTrigger)
+    waitNavReady()
     startMoveTo(x, y, z)
     wait(delay or 2)
     if checkFn and checkFn() then
@@ -241,6 +297,8 @@ local function moveToWithCheck(x, y, z, delay, checkFn, onTrigger)
         return true
     end
     waitArrival()
+    local d = distTo(x, y, z)
+    if d ~= nil and d > ARRIVE_DIST then moveTo(x, y, z) end
     return false
 end
 
@@ -650,8 +708,80 @@ end
 --   1. 掛上非凡防禦
 --   2. 勾解除限制 + 等級同步,並選定副本
 ----------------------------------------------------------------
+-- 目前職業 id;讀不到回傳 nil
+local function currentJobId()
+    local ok, v = pcall(function() return Player.Job.Id end)
+    if ok then return v end
+    return nil
+end
+
+-- 按名稱找套裝:完全一致優先,否則第一個包含該字串的;回傳 (0-based index, 名稱, 職業 id)
+--   Player.GetGearset 是 0-based,遊戲的 /gearset change 是 1-based
+local function findGearsetByName(name)
+    local partial = nil
+    for i = 0, 99 do
+        local ok, gs = pcall(function() return Player.GetGearset(i) end)
+        if ok and gs ~= nil then
+            local ok2, gsName = pcall(function() return gs.Name end)
+            local ok3, job    = pcall(function() return gs.ClassJob end)
+            gsName = ok2 and tostring(gsName or "") or ""
+            job    = ok3 and job or nil
+            if gsName ~= "" then
+                if gsName == name then return i, gsName, job end
+                if partial == nil and gsName:find(name, 1, true) then
+                    partial = { i, gsName, job }
+                end
+            end
+        end
+    end
+    if partial then return partial[1], partial[2], partial[3] end
+    return nil
+end
+
+-- 開場切換套裝;沒設定 / 找不到 / 已是該職業 都直接跳過
+local function switchGearset()
+    if GEARSET_NAME == nil or GEARSET_NAME == "" then return end
+
+    local idx, gsName, job = findGearsetByName(GEARSET_NAME)
+    if idx == nil then
+        echo("找不到套裝「" .. GEARSET_NAME .. "」,略過切換")
+        return
+    end
+    if job ~= nil and currentJobId() == job then
+        echo("目前已是套裝「" .. gsName .. "」的職業,略過切換")
+        return
+    end
+
+    echo("切換套裝 #" .. (idx + 1) .. "「" .. gsName .. "」")
+    yield("/gearset change " .. (idx + 1))
+    if job ~= nil then
+        if not waitUntil(function() return currentJobId() == job end, 10, 0.3) then
+            echo("切換套裝逾時,目前職業 id = " .. tostring(currentJobId()))
+            return
+        end
+    else
+        wait(2)
+    end
+    wait(1)  -- 換職業後技能列 / 狀態需要一點時間刷新
+end
+
+-- 遊戲剛啟動時各外掛與角色資料可能還沒就緒,先等一輪再開始
+local function waitGameReady()
+    if not playerReady() then
+        echo("等待角色就緒...")
+        waitUntil(function() return not isLoading() end, 120, 0.5)
+        waitUntil(playerReady, 120, 0.5)
+    end
+    waitNavReady()
+end
+
 local function setupOnce()
     echo("--- 開場準備 ---")
+
+    waitGameReady()
+
+    -- 套裝 (職業) 切換,要在施放青魔技能之前
+    switchGearset()
 
     -- 非凡防禦 (瞬發姿態技;檢查 buff 上身才算成功)
     if hasStatus(STATUS_MIGHTY_GUARD) then
