@@ -47,14 +47,15 @@ public sealed class PluginLogModule : IModule
 
     public void OpenWindow() => window.IsOpen = true;
 
+    /// <summary>AetherKit 自己的訊息直接記進紀錄（不經過聊天欄攔截）。</summary>
+    public void Record(string source, string text, bool error) => log.Record(source, text, error);
+
     public void DrawHeader()
     {
         var label = log.UnreadErrors > 0 ? $"開啟訊息紀錄（{log.UnreadErrors} 個新錯誤）" : "開啟訊息紀錄";
-        if (ImGui.Button(label))
+        if (ModuleUi.Action(label))
             OpenWindow();
-
-        ImGui.SameLine();
-        ImGui.TextDisabled("也可以輸入 /aetherkit log");
+        ModuleUi.Command("/aetherkit log");
     }
 
     public IEnumerable<ModuleTab> SettingsTabs

@@ -31,15 +31,49 @@ public static class ItemPopup
 
         Menu.Header(string.IsNullOrEmpty(state.Label) ? "項目" : state.Label);
 
-        changed |= DrawStates(item);
+        Menu.Section("類型");
+        if (ImGui.RadioButton("一般", !item.Toggle))
+        {
+            item.Toggle = false;
+            changed = true;
+        }
 
-        Menu.Section(item.Cycles ? $"狀態 {item.StateIndex + 1} 設定" : "項目設定");
-        changed |= DrawFields(plugin, state);
+        ImGui.SameLine();
+        if (ImGui.RadioButton("開關", item.Toggle))
+        {
+            item.Toggle = true;
+            changed = true;
+        }
+
+        if (item.Toggle)
+        {
+            // 開關只有一組外觀，關著時自動變灰
+            Menu.Section("外觀");
+            changed |= DrawFields(plugin, state, command: false);
+            changed |= TopBarMenu.DrawToggle(plugin, item);
+        }
+        else
+        {
+            changed |= DrawStates(item);
+
+            Menu.Section(item.Cycles ? $"狀態 {item.StateIndex + 1} 設定" : "項目設定");
+            changed |= DrawFields(plugin, state);
+        }
+
+        Menu.Separator();
+        changed |= TopBarMenu.DrawEnableCondition(plugin, item);
 
         Menu.Separator();
         changed |= DrawHotkey(plugin, item, "快捷鍵");
 
         Menu.Separator();
+
+        if (Menu.Item("複製這個項目") && index >= 0 && index < list.Count)
+        {
+            // 放在右邊；快捷鍵不複製，免得兩個一起觸發
+            list.Insert(index + 1, item.Duplicate());
+            changed = true;
+        }
 
         if (Menu.Danger("刪除這個項目") && index >= 0 && index < list.Count)
         {
@@ -202,11 +236,20 @@ public static class ItemPopup
             return changed;
 
         var text = state.Command;
-        if (ImGui.InputTextMultiline("指令", ref text, 4096, new Vector2(FieldWidth, 70)))
+        if (DrawCommand(plugin, "指令", ref text))
         {
             state.Command = text;
             changed = true;
         }
+
+        DrawCommandHelp(plugin, "按一次執行目前狀態的指令，然後換下一個");
+        return changed;
+    }
+
+    /// <summary>多行指令輸入框；不是 / 開頭的行當場標出來。</summary>
+    public static bool DrawCommand(Plugin plugin, string label, ref string text)
+    {
+        var changed = ImGui.InputTextMultiline(label, ref text, 4096, new Vector2(FieldWidth, 70));
 
         // 打的當下就標出來，不要等按下去沒反應才發現
         var theme = plugin.Config.Theme;
@@ -223,10 +266,15 @@ public static class ItemPopup
             ImGui.PopStyleColor();
         }
 
-        ImGui.PushStyleColor(ImGuiCol.Text, theme.TextSecondary);
-        ImGui.TextUnformatted("每行一個指令，都要 / 開頭，// 開頭是註解\n要說話請用 /s、/p 這類指令\n按一次執行目前狀態的指令，然後換下一個");
-        ImGui.PopStyleColor();
-
         return changed;
+    }
+
+    public static void DrawCommandHelp(Plugin plugin, string extra)
+    {
+        ImGui.PushStyleColor(ImGuiCol.Text, plugin.Config.Theme.TextSecondary);
+        ImGui.TextUnformatted("每行一個指令，都要 / 開頭，// 開頭是註解\n"
+                              + "/wait 1 = 等 1 秒再執行下一行（行尾加 <wait.1> 也可以）\n"
+                              + $"要說話請用 /s、/p 這類指令\n{extra}");
+        ImGui.PopStyleColor();
     }
 }

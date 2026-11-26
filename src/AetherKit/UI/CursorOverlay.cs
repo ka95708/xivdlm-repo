@@ -53,12 +53,22 @@ public static class CursorOverlay
         }
     }
 
-    /// <summary>項目存在、而且正停在指定的狀態。</summary>
+    /// <summary>
+    /// 項目存在、而且正停在指定的狀態。開關沒有狀態 1、2，用 StateIndex 1 = 開著、0 = 關著（讀不到就都不顯示）。
+    /// </summary>
     public static bool IsActive(Plugin plugin, CursorIndicator indicator)
     {
         var item = FindItem(plugin, indicator.ItemId);
-        return item != null && item.StateIndex == indicator.StateIndex;
+        if (item == null) return false;
+
+        if (!item.IsToggle) return item.StateIndex == indicator.StateIndex;
+
+        var on = ToolbarItemState.IsOn(item);
+        return indicator.StateIndex == ToggleOnIndex ? on == true : on == false;
     }
+
+    /// <summary>開關的「開著」記成 StateIndex 1（預設值），「關著」是 0。</summary>
+    public const int ToggleOnIndex = 1;
 
     public static StatefulItem? FindItem(Plugin plugin, Guid id) => ItemDirectory.Find(plugin.Config, id);
 

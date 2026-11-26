@@ -23,6 +23,9 @@ public class TopBarWindow : Window
     /// <summary>這一幀每張卡片的位置，右鍵判斷按在哪張卡片、新增要插在哪都靠它。</summary>
     private readonly List<(TopBarItem Item, Vector2 Min, Vector2 Max)> chipRects = new();
 
+    /// <summary>剛被點一下收起來的面板卡片：滑鼠離開前不要再滑過展開。</summary>
+    private TopBarItem? closedByClick;
+
     private TopBarItem? menuItem;
     private TopBarItem? pendingChipMenu;
     private int insertAt;
@@ -72,16 +75,20 @@ public class TopBarWindow : Window
 
         chipRects.Clear();
 
+        var first = true;
         for (var i = 0; i < Bar.Items.Count; i++)
         {
-            if (i > 0)
+            if (!IsShown(Bar.Items[i])) continue;
+
+            if (!first)
                 ImGui.SameLine();
 
+            first = false;
             DrawItem(Bar.Items[i], i);
         }
 
         // 沒有項目時還是要有東西讓滑鼠右鍵點得到，不然整排就找不回來了
-        if (Bar.Items.Count == 0)
+        if (first)
             Paint.Chip("empty", EmptyChip, ItemStyle.TextOnly, false, false);
 
         // 項目之間與四周都有留白，滑過那些地方不該讓面板收起來
@@ -98,25 +105,36 @@ public class TopBarWindow : Window
 
     private float ContentWidth()
     {
-        if (Bar.Items.Count == 0)
-            return Paint.ChipWidth(EmptyChip, ItemStyle.TextOnly, false);
-
-        var width = Theme.Gap * (Bar.Items.Count - 1);
+        var width = 0f;
+        var count = 0;
 
         foreach (var item in Bar.Items)
-            width += Paint.ChipWidth(item.Current, item.Style, item.Kind == ItemKind.Panel);
+        {
+            if (!IsShown(item)) continue;
 
-        return width;
+            width += Paint.ChipWidth(item.Current, item.Style, item.Kind == ItemKind.Panel);
+            count++;
+        }
+
+        return count == 0
+            ? Paint.ChipWidth(EmptyChip, ItemStyle.TextOnly, false)
+            : width + Theme.Gap * (count - 1);
     }
+
+    /// <summary>設了「不能按時藏起來」而且現在不能按的，不畫；編輯模式下全部都畫，才找得到。</summary>
+    private bool IsShown(TopBarItem item) =>
+        !ToolbarItemState.IsHidden(plugin.Config, item, plugin.Toolbar.EditMode);
 
     private static readonly ActionItem EmptyChip = new() { Label = "AetherKit（右鍵）" };
 
     private void DrawItem(TopBarItem item, int index)
     {
         var open = item.Panel != null && plugin.Toolbar.Panels.IsShowing(item.Panel);
+        var blocked = ToolbarItemState.BlockedReason(plugin.Config, item);
 
         ImGui.PushID(item.Id.ToString());
-        var clicked = Paint.Chip("item", item.Current, item.Style, item.Kind == ItemKind.Panel, open);
+        var clicked = Paint.Chip("item", ToolbarItemState.Face(item), item.Style, item.Kind == ItemKind.Panel, open, blocked != null,
+            item.IsToggle ? ToolbarItemState.IsOn(item) == true : null);
 
         var min = ImGui.GetItemRectMin();
         var max = ImGui.GetItemRectMax();
@@ -137,18 +155,57 @@ public class TopBarWindow : Window
             // 快捷鍵按下的開關請求，要等畫到這張卡片才知道面板該貼在哪
             if (plugin.Toolbar.Panels.TakeToggleRequest(item.Panel, min, max)) return;
 
-            // hover 就展開，不做延遲；面板自己會把間隙納入命中範圍
-            if (hovered)
+            // 點一下：釘住不收，再點一次才收
+            if (clicked && !Paint.WasDragged())
+            {
+                // 點一下收起來時滑鼠還在卡片上，要等滑鼠離開，不然下一幀又滑過展開了
+                if (!plugin.Toolbar.Panels.TogglePin(item.Panel, min, max))
+                    closedByClick = item;
+                return;
+            }
+
+            if (!hovered && ReferenceEquals(closedByClick, item))
+                closedByClick = null;
+
+            // hover 就展開，不做延遲；面板自己會把間隙納入命中範圍。有面板被點住時不換
+            if (hovered && !plugin.Toolbar.Panels.PinnedByClick && !ReferenceEquals(closedByClick, item))
                 plugin.Toolbar.Panels.Open(item.Panel, min, max);
 
             return;
         }
 
+        if (hovered && !plugin.Toolbar.EditMode && !ImGui.IsAnyMouseDown())
+            DrawTooltip(item, blocked);
+
         // 編輯模式下也照常執行，改完直接點就能測；拖曳排序放開時不算點擊
-        if (!clicked || Paint.WasDragged()) return;
+        if (!clicked || Paint.WasDragged() || blocked != null) return;
 
         Services.Log.Debug($"點擊工具列：{item.Current.Label}（編輯模式={plugin.Toolbar.EditMode}）");
         plugin.Execute(item);
+    }
+
+    /// <summary>滑過按鈕、開關：名稱、開或關、快捷鍵，不能按時寫原因。</summary>
+    private void DrawTooltip(TopBarItem item, string? blocked)
+    {
+        var theme = Theme;
+        ImGui.BeginTooltip();
+
+        ImGui.TextUnformatted(string.IsNullOrEmpty(item.Current.Label) ? "（未命名）" : item.Current.Label);
+
+        if (item.Kind == ItemKind.Toggle)
+        {
+            var on = ToolbarItemState.IsOn(item);
+            ImGui.TextColored(on == true ? theme.Positive : theme.TextSecondary,
+                on switch { true => "開著：按下去關掉", false => "關著：按下去打開", _ => "讀不到開或關" });
+        }
+
+        if (item.Hotkey.IsSet)
+            ImGui.TextColored(theme.TextSecondary, $"快捷鍵：{AetherKit.Game.HotkeyManager.Describe(item.Hotkey)}");
+
+        if (blocked != null)
+            ImGui.TextColored(theme.Danger, $"不能按：{blocked}");
+
+        ImGui.EndTooltip();
     }
 
     /// <summary>編輯模式下左鍵拖卡片調整順序，放到哪張卡片上就換到那個位置。</summary>

@@ -75,6 +75,9 @@ public sealed class PluginLog : IDisposable
     {
         if (isHandled || !FromPluginQueue()) return;
 
+        // AetherKit 自己印到聊天欄的只有指令回應，已經由 Notify 記過，照樣顯示
+        if (message.TextValue.TrimStart().StartsWith($"[{Core.Notify.Source}]")) return;
+
         try
         {
             var (source, text) = Split(message.TextValue);
@@ -106,6 +109,14 @@ public sealed class PluginLog : IDisposable
         }
 
         return false;
+    }
+
+    /// <summary>直接記一則（AetherKit 自己的訊息由 Notify 記，不從聊天欄攔）。通知由 Notify 自己跳，這裡不再跳。</summary>
+    public void Record(string source, string text, bool error)
+    {
+        Add(new PluginLogEntry(DateTime.Now, source, text, error));
+        if (error && !plugin.PluginLog.WindowOpen)
+            UnreadErrors++;
     }
 
     private void Add(PluginLogEntry entry)

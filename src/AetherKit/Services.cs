@@ -1,5 +1,7 @@
 using Dalamud.IoC;
 using Dalamud.Plugin;
+using Dalamud.Game.ClientState.Objects;
+using Dalamud.Game;
 using Dalamud.Plugin.Services;
 
 namespace AetherKit;
@@ -18,6 +20,16 @@ public class Services
     [PluginService] public static IPlayerState PlayerState { get; private set; } = null!;
     [PluginService] public static IGameGui GameGui { get; private set; } = null!;
     [PluginService] public static IAddonLifecycle AddonLifecycle { get; private set; } = null!;
+    [PluginService] public static IAddonEventManager AddonEvents { get; private set; } = null!;
+    [PluginService] public static IContextMenu ContextMenu { get; private set; } = null!;
+    [PluginService] public static IToastGui Toasts { get; private set; } = null!;
     [PluginService] public static INotificationManager Notifications { get; private set; } = null!;
     [PluginService] public static IPluginLog Log { get; private set; } = null!;
+    [PluginService] public static IObjectTable Objects { get; private set; } = null!;
+    [PluginService] public static ITargetManager Targets { get; private set; } = null!;
+    [PluginService] public static IFateTable Fates { get; private set; } = null!;
+    [PluginService] public static ISigScanner SigScanner { get; private set; } = null!;
+    [PluginService] public static IGameInteropProvider GameInterop { get; private set; } = null!;
+    [PluginService] public static IGameConfig GameConfig { get; private set; } = null!;
+    [PluginService] public static IDtrBar DtrBar { get; private set; } = null!;
 }

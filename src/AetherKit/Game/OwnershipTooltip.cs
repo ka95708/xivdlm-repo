@@ -9,6 +9,7 @@ using FFXIVClientStructs.FFXIV.Client.System.Memory;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Lumina.Text;
 using Lumina.Text.ReadOnly;
+using AetherKit.Core;
 
 namespace AetherKit.Game;
 
@@ -54,7 +55,7 @@ public sealed unsafe class OwnershipTooltip : IDisposable
 
     private readonly Plugin plugin;
     private readonly Ownership ownership;
-    private readonly Field quantity = new(QuantityIndex);
+    private readonly StringArrayField quantity = new(QuantityIndex);
     private bool listening;
 
     /// <summary>上次把資訊框拉高了多少；下次更新前要先收回來，不然會越拉越高。</summary>
@@ -302,6 +303,7 @@ public sealed unsafe class OwnershipTooltip : IDisposable
     }
 
     /// <summary>建一個文字節點，接在 insert 前面（同一層），樣式抄資訊框裡的一般文字。</summary>
+    // [改記憶體] 建立節點並接進資訊框的節點串列（見 改版檢查清單.md）
     private static AtkTextNode* CreateNode(AtkUnitBase* addon, AtkResNode* insert)
     {
         var node = IMemorySpace.GetUISpace()->Create<AtkTextNode>();
@@ -357,6 +359,7 @@ public sealed unsafe class OwnershipTooltip : IDisposable
     }
 
     /// <summary>拿掉所有自己的節點，包括舊版留下、或插件上次沒清掉的。</summary>
+    // [改記憶體] 從節點串列拆掉自己建的節點（見 改版檢查清單.md）
     private static void RemoveAllNodes(AtkUnitBase* addon)
     {
         // 上限只是保險，不會真的有這麼多
@@ -459,60 +462,4 @@ public sealed unsafe class OwnershipTooltip : IDisposable
     private static SeStringBuilder PushStale(SeStringBuilder builder) => builder.PushColorRgba(0x8C, 0x8C, 0x8C, 0xFF);
 
     public void Dispose() => Stop();
-
-    /// <summary>
-    /// 字串陣列裡我們改寫的一格。同一次顯示資訊框可能更新好幾次，改過的字串會留在陣列裡；
-    /// 再看到自己寫的字串時，要從原本的內容重新改，不然會一直往後疊。
-    /// </summary>
-    private sealed class Field
-    {
-        private readonly int index;
-        private byte[]? original;
-        private byte[]? written;
-
-        public Field(int index)
-        {
-            this.index = index;
-        }
-
-        public void Forget() => original = written = null;
-
-        /// <summary>change = null 表示這次不改；之前改過的話換回原本的內容。</summary>
-        public void Apply(StringArrayData* strings, Func<byte[], byte[]>? change)
-        {
-            var current = Read(strings);
-            var source = written != null && current.AsSpan().SequenceEqual(written) ? original! : current;
-
-            if (change == null)
-            {
-                if (!ReferenceEquals(source, current))
-                    Write(strings, source);
-
-                Forget();
-                return;
-            }
-
-            var result = change(source);
-            Write(strings, result);
-
-            original = source;
-            written = result;
-        }
-
-        private byte[] Read(StringArrayData* strings)
-        {
-            var value = strings->StringArray[index];
-            if (value.Value == null) return Array.Empty<byte>();
-
-            return value.AsSpan().ToArray();
-        }
-
-        private void Write(StringArrayData* strings, byte[] value)
-        {
-            // 結尾補 0：遊戲讀的是 C 字串
-            var terminated = new byte[value.Length + 1];
-            value.CopyTo(terminated, 0);
-            strings->SetValue(index, terminated, false, true, true);
-        }
-    }
 }

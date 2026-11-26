@@ -50,7 +50,31 @@ public partial class PanelWindow : Window
         openerMax = itemMax;
         lastHoveredFrame = plugin.FrameCount;
         pinnedByHotkey = false;
+        pinnedByClick = false;
         IsOpen = true;
+    }
+
+    /// <summary>
+    /// 點卡片打開的面板：一直開著，直到再點同一張卡片（或按它的快捷鍵）才收。
+    /// 釘住時滑過別的卡片不會換面板，要換就點那張卡片。
+    /// </summary>
+    private bool pinnedByClick;
+
+    public bool PinnedByClick => IsOpen && pinnedByClick;
+
+    /// <summary>點了面板卡片：沒釘住就打開並釘住，已經釘住的是這個就收起來。回傳現在是不是開著。</summary>
+    public bool TogglePin(PanelConfig target, Vector2 itemMin, Vector2 itemMax)
+    {
+        if (IsShowing(target) && pinnedByClick)
+        {
+            IsOpen = false;
+            pinnedByClick = false;
+            return false;
+        }
+
+        Open(target, itemMin, itemMax);
+        pinnedByClick = true;
+        return true;
     }
 
     /// <summary>
@@ -80,6 +104,7 @@ public partial class PanelWindow : Window
         {
             IsOpen = false;
             pinnedByHotkey = false;
+            pinnedByClick = false;
             return true;
         }
 
@@ -106,7 +131,7 @@ public partial class PanelWindow : Window
         // 工具列沒畫出來（例如被顯示條件藏起來）就沒人接，丟掉，免得之後突然打開
         toggleRequest = null;
 
-        if (!IsOpen || EditMode) return;
+        if (!IsOpen || EditMode || pinnedByClick) return;
 
         if (pinnedByHotkey)
         {
@@ -248,6 +273,17 @@ public partial class PanelWindow : Window
             sectionRects.Add((placed.Section, min, min + placed.Size));
         }
 
+        // 把手最後才畫：後建的子視窗蓋在上面，右邊、下面的分區才不會擋住前面分區的把手
+        if (EditMode)
+        {
+            foreach (var placed in flow.Sections)
+            {
+                ImGui.PushID(placed.Section.Id.ToString());
+                ResizeSection(placed, origin + placed.Offset + placed.Size);
+                ImGui.PopID();
+            }
+        }
+
         if (config.Columns.Count == 0 && EditMode)
             Paint.Hint(origin + new Vector2(theme.Padding), "在這裡右鍵新增分區");
 
@@ -293,7 +329,8 @@ public partial class PanelWindow : Window
 
                 DrawRow(section, part, rowSize);
 
-                if (!section.IsAuto)
+                // 同一幀前面的列可能已經刪掉、複製或拖走了項目（版面是這一幀開頭排的），對不上的這一幀先跳過
+                if (!section.IsAuto && part.Index < section.Items.Count)
                 {
                     // 看得到的列才算落點，捲出去的不算
                     if (ImGui.IsItemVisible())
@@ -327,9 +364,6 @@ public partial class PanelWindow : Window
         }
 
         ImGui.EndChild();
-
-        if (EditMode)
-            ResizeSection(placed, max);
     }
 
     private void DrawTitle(PanelSection section, Part part, Vector2 pos)
@@ -357,7 +391,17 @@ public partial class PanelWindow : Window
     private void DrawRow(PanelSection section, Part part, Vector2 size)
     {
         var item = part.Item!;
-        if (!Paint.Item("row", item, size, ItemStyle.IconAndText, part.Tint)) return;
+
+        // 自訂項目可以設「可以按的條件」：不成立時變灰、不能按，滑過寫原因
+        var own = !section.IsAuto && part.Index >= 0 && part.Index < section.Items.Count ? section.Items[part.Index] : null;
+        var blocked = own == null ? null : ToolbarItemState.BlockedReason(plugin.Config, own);
+
+        var clicked = Paint.Item("row", item, size, ItemStyle.IconAndText, part.Tint, blocked == null,
+            own is { IsToggle: true } ? ToolbarItemState.IsOn(own) == true : null);
+        if (blocked != null && ImGui.IsItemHovered())
+            ImGui.SetTooltip($"{item.Label}\n不能按：{blocked}");
+
+        if (!clicked) return;
 
         // 編輯模式下也照常執行，改完直接點就能測；拖曳排序放開時不算點擊
         if (Paint.WasDragged()) return;

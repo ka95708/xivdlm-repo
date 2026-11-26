@@ -63,6 +63,11 @@ public partial class PanelWindow
         var placed = new List<PlacedSection>();
         var columns = new List<PlacedColumn>(config.Columns.Count);
 
+        // 整個面板用同一個格寬（照所有分區裡最長的名稱），不同分區的格子才會對齊、一樣寬
+        var itemWidth = MinItemWidth;
+        foreach (var section in config.Sections)
+            itemWidth = MathF.Max(itemWidth, NaturalItemWidth(section));
+
         var x = theme.Padding;
         var bottom = 0f;
 
@@ -76,10 +81,10 @@ public partial class PanelWindow
             {
                 var section = sections[i];
                 var box = new Vector2(
-                    MathF.Max(section.Width, section.ItemWidth),
+                    MathF.Max(section.Width, MinSectionWidth(section, itemWidth)),
                     MathF.Max(section.Height, theme.RowHeight));
 
-                placed.Add(new PlacedSection(section, new Vector2(x, y), box, LayoutSection(section, box), c, i));
+                placed.Add(new PlacedSection(section, new Vector2(x, y), box, LayoutSection(section, box, itemWidth), c, i));
 
                 width = MathF.Max(width, box.X);
                 y += box.Y + theme.BlockGap;
@@ -102,14 +107,34 @@ public partial class PanelWindow
     /// <summary>
     /// 分區的內容。內容比分區高時會出現捲軸、可用寬度變窄，
     /// 所以超出的話用扣掉捲軸的寬度再排一次，最右邊那欄才不會被捲軸蓋住。
+    /// natural = 放得下名稱的最小格寬（整個面板一樣）。
     /// </summary>
-    private SectionLayout LayoutSection(PanelSection section, Vector2 box)
+    private SectionLayout LayoutSection(PanelSection section, Vector2 box, float natural)
     {
-        var layout = LayoutSection(section, box.X);
+        var layout = LayoutStretched(section, box.X, natural);
 
         return layout.ContentHeight > box.Y
-            ? LayoutSection(section, MathF.Max(section.ItemWidth, box.X - ImGui.GetStyle().ScrollbarSize))
+            ? LayoutStretched(section, MathF.Max(natural, box.X - ImGui.GetStyle().ScrollbarSize), natural)
             : layout;
+    }
+
+    /// <summary>
+    /// 格子撐滿分區寬度：先看用最小格寬塞得下幾欄，再把剩下的寬度平均分給每一欄，右邊不留一塊空白。
+    /// 套裝列表照職能小組分欄（不是照寬度），維持最小格寬。
+    /// </summary>
+    private SectionLayout LayoutStretched(PanelSection section, float width, float natural)
+    {
+        var gap = Theme.Gap;
+        var columns = FixedColumns(section) is > 0 and var fixedCount
+            ? fixedCount
+            : Math.Max(1, (int)((width + gap) / (natural + gap)));
+        section.MinItemWidth = natural;
+
+        section.ItemWidth = section.HasGroups
+            ? natural
+            : MathF.Max(natural, (width - gap * (columns - 1)) / columns);
+
+        return LayoutSection(section, width);
     }
 
     private SectionLayout LayoutSection(PanelSection section, float width)
@@ -121,12 +146,19 @@ public partial class PanelWindow
         {
             case SectionSource.Manual:
                 // 顯示的是每個項目目前的狀態；Part.Index 對回 section.Items
+                // 設了「不能按時藏起來」的不排；indices 記每一格對回 section.Items 的第幾個
                 var faces = new List<ActionItem>(section.Items.Count);
+                var indices = new List<int>(section.Items.Count);
 
-                foreach (var item in section.Items)
-                    faces.Add(item.Current);
+                for (var i = 0; i < section.Items.Count; i++)
+                {
+                    if (ToolbarItemState.IsHidden(plugin.Config, section.Items[i], EditMode)) continue;
 
-                LayoutGrid(layout, section.Title, faces, columns, section.ItemWidth, width);
+                    faces.Add(ToolbarItemState.Face(section.Items[i]));
+                    indices.Add(i);
+                }
+
+                LayoutGrid(layout, section.Title, faces, columns, section.ItemWidth, width, indices);
                 break;
 
             case SectionSource.Gearsets:
@@ -147,6 +179,38 @@ public partial class PanelWindow
         return layout;
     }
 
+    /// <summary>分區指定的欄數；0 = 自動。套裝列表照職能小組分欄，一律 0。</summary>
+    private static int FixedColumns(PanelSection section) => section.HasGroups ? 0 : section.ColumnCount;
+
+    /// <summary>分區最窄多寬：指定欄數時要放得下那幾欄，自動時放得下一欄。</summary>
+    private float MinSectionWidth(PanelSection section, float natural)
+    {
+        var columns = Math.Max(1, FixedColumns(section));
+        return natural * columns + Theme.Gap * (columns - 1);
+    }
+
+    /// <summary>每一格多寬：剛好放得下分區裡最長的名稱（含圖示、副標），太長的截斷、滑過看全名。</summary>
+    private float NaturalItemWidth(PanelSection section)
+    {
+        var widest = 0f;
+
+        if (section.Source == SectionSource.Manual)
+        {
+            foreach (var item in section.Items)
+                widest = MathF.Max(widest, Paint.ItemWidth(item.Current));
+        }
+        else
+        {
+            foreach (var row in PanelContent.Get(section.Source))
+                widest = MathF.Max(widest, Paint.ItemWidth(row.Item));
+        }
+
+        return Math.Clamp(widest, MinItemWidth, MaxItemWidth);
+    }
+
+    private const float MinItemWidth = 80f;
+    private const float MaxItemWidth = 320f;
+
     /// <summary>欄數由寬度推出來，欄間距也算進去，所以剛好塞得下才多一欄。</summary>
     private int ColumnsFor(PanelSection section, float width)
     {
@@ -156,7 +220,7 @@ public partial class PanelWindow
 
     /// <summary>沒有小組的分區：一般的格線，欄數由寬度決定。</summary>
     private void LayoutGrid(SectionLayout layout, string title, IReadOnlyList<ActionItem> items,
-        int columns, float itemWidth, float width)
+        int columns, float itemWidth, float width, IReadOnlyList<int>? indices = null)
     {
         var theme = Theme;
         var y = 0f;
@@ -173,7 +237,7 @@ public partial class PanelWindow
                 i % columns * (itemWidth + theme.Gap),
                 y + i / columns * (theme.RowHeight + theme.Gap));
 
-            layout.Parts.Add(new Part(offset, items[i], i, null, null, null));
+            layout.Parts.Add(new Part(offset, items[i], indices?[i] ?? i, null, null, null));
         }
 
         var rowCount = (items.Count + columns - 1) / columns;

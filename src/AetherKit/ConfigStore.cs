@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using Dalamud.Plugin.Services;
 using Newtonsoft.Json;
 
@@ -65,6 +66,13 @@ public class ConfigStore : IDisposable
     /// </summary>
     public static void Normalize(Configuration config)
     {
+        // 早期版本的清單沒標 Replace，每次載入都疊一份預設值：去掉重複的
+        var fate = config.AutoFate;
+        fate.Kinds = fate.Kinds.Distinct().ToList();
+        fate.PriorityNames = fate.PriorityNames.Distinct().ToList();
+        fate.Blacklist = fate.Blacklist.Distinct().ToList();
+        fate.Zones = fate.Zones.Distinct().ToList();
+
         var indicators = config.Cursor.Indicators;
         if (indicators.Count > CursorConfig.MaxIndicators)
             indicators.RemoveRange(CursorConfig.MaxIndicators, indicators.Count - CursorConfig.MaxIndicators);

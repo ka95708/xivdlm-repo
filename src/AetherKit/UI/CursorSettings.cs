@@ -50,10 +50,10 @@ public class CursorSettings
         DrawShared();
     }
 
-    /// <summary>可以選的項目：有兩個以上狀態的才有「開著／關著」可言。</summary>
+    /// <summary>可以選的項目：開關，或有兩個以上狀態的才有「開著／關著」可言。</summary>
     private IEnumerable<(StatefulItem Item, string Location)> Toggles() =>
         ItemDirectory.Pressable(plugin.Config)
-            .Where(entry => entry.Item.Cycles)
+            .Where(entry => entry.Item.Cycles || entry.Item.IsToggle)
             .Select(entry => (entry.Item, entry.Location));
 
     /// <summary>新的提示預設跟第一個開關項目，圖示先借它「開」那個狀態的，之後再換。</summary>
@@ -65,8 +65,8 @@ public class CursorSettings
         if (first != null)
         {
             indicator.ItemId = first.Id;
-            indicator.StateIndex = Math.Min(1, first.States.Count - 1);
-            indicator.IconId = first.States[indicator.StateIndex].IconId;
+            indicator.StateIndex = first.IsToggle ? CursorOverlay.ToggleOnIndex : Math.Min(1, first.States.Count - 1);
+            indicator.IconId = first.IsToggle ? first.Current.IconId : first.States[indicator.StateIndex].IconId;
         }
 
         Cursor.Indicators.Add(indicator);
@@ -113,7 +113,9 @@ public class CursorSettings
 
     /// <summary>用所有狀態的名稱來認，例如「自動戰鬥 開 / 關」。</summary>
     private static string ItemName(StatefulItem item) =>
-        string.Join(" / ", item.States.Select(state => string.IsNullOrEmpty(state.Label) ? "（未命名）" : state.Label));
+        item.IsToggle
+            ? $"{(string.IsNullOrEmpty(item.Current.Label) ? "（未命名）" : item.Current.Label)}（開關）"
+            : string.Join(" / ", item.States.Select(state => string.IsNullOrEmpty(state.Label) ? "（未命名）" : state.Label));
 
     /// <summary>選單依位置分組：工具列一組，每個面板的每個自訂區塊各一組。</summary>
     private void DrawItemCombo(CursorIndicator indicator, StatefulItem? current)
@@ -141,7 +143,9 @@ public class CursorSettings
             if (ImGui.Selectable($"　{ItemName(item)}", item.Id == indicator.ItemId))
             {
                 indicator.ItemId = item.Id;
-                indicator.StateIndex = Math.Clamp(indicator.StateIndex, 0, item.States.Count - 1);
+                indicator.StateIndex = item.IsToggle
+                    ? Math.Clamp(indicator.StateIndex, 0, 1)
+                    : Math.Clamp(indicator.StateIndex, 0, item.States.Count - 1);
                 plugin.Save();
             }
 
@@ -149,7 +153,7 @@ public class CursorSettings
         }
 
         if (location.Length == 0)
-            ImGui.TextDisabled("工具列和面板裡都還沒有兩個狀態以上的項目。");
+            ImGui.TextDisabled("工具列和面板裡都還沒有開關，或兩個狀態以上的項目。");
 
         ImGui.EndCombo();
     }
@@ -157,6 +161,12 @@ public class CursorSettings
     private void DrawStateCombo(CursorIndicator indicator, StatefulItem? item)
     {
         if (item == null) return;
+
+        if (item.IsToggle)
+        {
+            DrawToggleCombo(indicator);
+            return;
+        }
 
         string StateName(int i) =>
             $"狀態 {i + 1}：{(string.IsNullOrEmpty(item.States[i].Label) ? "（未命名）" : item.States[i].Label)}";
@@ -174,6 +184,29 @@ public class CursorSettings
             if (!ImGui.Selectable(StateName(i), i == indicator.StateIndex)) continue;
 
             indicator.StateIndex = i;
+            plugin.Save();
+        }
+
+        ImGui.EndCombo();
+    }
+
+    /// <summary>開關只有開著、關著兩種時機。</summary>
+    private void DrawToggleCombo(CursorIndicator indicator)
+    {
+        var on = indicator.StateIndex == CursorOverlay.ToggleOnIndex;
+        ImGui.SetNextItemWidth(260);
+
+        if (!ImGui.BeginCombo("顯示時機", on ? "開著時" : "關著時")) return;
+
+        if (ImGui.Selectable("開著時", on))
+        {
+            indicator.StateIndex = CursorOverlay.ToggleOnIndex;
+            plugin.Save();
+        }
+
+        if (ImGui.Selectable("關著時", !on))
+        {
+            indicator.StateIndex = 0;
             plugin.Save();
         }
 

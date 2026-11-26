@@ -1,3 +1,4 @@
+using AetherKit.Core;
 using System;
 using System.Runtime.InteropServices;
 using Dalamud.Plugin.Services;
@@ -132,7 +133,7 @@ public sealed unsafe class AutoLogin : IDisposable
     private void Abort(string reason)
     {
         Finish(reason);
-        Services.Chat.PrintError($"[AetherKit] 自動登入停止：{reason}");
+        Notify.Error("自動登入", $"停止：{reason}");
     }
 
     private void OnUpdate(IFramework framework)
@@ -144,7 +145,7 @@ public sealed unsafe class AutoLogin : IDisposable
         if ((GetAsyncKeyState(VkShift) & 0x8000) != 0)
         {
             Finish("已取消（按住 Shift）");
-            Services.Chat.Print("[AetherKit] 已取消自動登入。");
+            Notify.Info("自動登入", "已取消。");
             return;
         }
 
@@ -435,7 +436,7 @@ public sealed unsafe class AutoLogin : IDisposable
         return addon != null && addon->IsVisible;
     }
 
-    private static AtkEvent NewEvent(AtkUnitBase* addon, byte flags) => new()
+    internal static AtkEvent NewEvent(AtkUnitBase* addon, byte flags) => new()
     {
         Listener = (AtkEventListener*)addon,
         Target = &AtkStage.Instance()->AtkEventTarget,
@@ -443,7 +444,7 @@ public sealed unsafe class AutoLogin : IDisposable
     };
 
     /// <summary>按下介面上的按鈕：把按鈕自己身上掛的事件送給它所在的介面，跟滑鼠點下去一樣。</summary>
-    private static bool ClickButton(AtkUnitBase* addon, AtkComponentButton* button)
+    internal static bool ClickButton(AtkUnitBase* addon, AtkComponentButton* button)
     {
         if (addon == null || button == null || !button->IsEnabled || !button->AtkResNode->IsVisible()) return false;
 

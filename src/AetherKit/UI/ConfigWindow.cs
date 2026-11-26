@@ -1,13 +1,15 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using AetherKit.Modules;
+using AetherKit.Tweaks;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
 
 namespace AetherKit.UI;
 
 /// <summary>
-/// 管理視窗：左邊一欄清單，上半是模組（旁邊的點表示有沒有啟用），分隔線下面是所有模組共用的頁面；
+/// 管理視窗：左邊一欄清單，上半是模組（旁邊的點：功能表示有沒有啟用、自動流程表示正在執行），分隔線下面是所有模組共用的頁面；
 /// 右邊是選到的那一頁。工具列與面板的內容一律在編輯模式下直接在畫面上右鍵編輯。
 ///
 /// 這個視窗用 Dalamud 原生樣式，跟其他插件的設定視窗一致；
@@ -18,6 +20,7 @@ public class ConfigWindow : Window
     private const float NavWidth = 160f;
 
     // 共用頁的代號。模組頁用模組自己的 Id
+    private const string CorePageId = "core";
     private const string ThemePage = "theme";
     private const string HotkeysPage = "hotkeys";
     private const string TransferPage = "transfer";
@@ -25,6 +28,7 @@ public class ConfigWindow : Window
     private readonly Plugin plugin;
     private readonly HotkeySettings hotkeys;
     private readonly TransferSettings transfer;
+    private readonly CorePage corePage;
 
     /// <summary>下一次畫模組頁時要切過去的分頁（從工具列選單按「管理條件組…」時用）。</summary>
     private string? requestedTab;
@@ -34,6 +38,7 @@ public class ConfigWindow : Window
         this.plugin = plugin;
         hotkeys = new HotkeySettings(plugin);
         transfer = new TransferSettings(plugin);
+        corePage = new CorePage(plugin.Core);
         Size = new Vector2(820, 560);
         SizeCondition = ImGuiCond.FirstUseEver;
         SizeConstraints = new WindowSizeConstraints
@@ -49,6 +54,12 @@ public class ConfigWindow : Window
         plugin.Toolbar.Conditions.Select(set);
         Page = plugin.Toolbar.Id;
         requestedTab = ToolbarModule.ConditionsTab;
+        IsOpen = true;
+    }
+
+    public void ShowCorePage()
+    {
+        Page = CorePageId;
         IsOpen = true;
     }
 
@@ -71,7 +82,8 @@ public class ConfigWindow : Window
 
     private bool IsKnownPage(string page)
     {
-        if (page is ThemePage or HotkeysPage or TransferPage) return true;
+        if (page is CorePageId or ThemePage or HotkeysPage or TransferPage) return true;
+        if (page == TweakSearchPage || TweakGroupOf(page) != null) return true;
 
         foreach (var module in plugin.Modules)
         {
@@ -100,19 +112,45 @@ public class ConfigWindow : Window
     {
         var page = Page;
 
-        foreach (var module in plugin.Modules)
-            NavModule(module, page);
+        NavGroup("自動流程", ModuleGroup.Automation, page);
+        ImGui.Spacing();
+        NavGroup("功能", ModuleGroup.Feature, page);
+        ImGui.Spacing();
+        NavTweaks(page);
 
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
 
+        NavItem("核心能力", CorePageId, page);
         NavItem("主題", ThemePage, page);
         NavItem("快捷鍵列表", HotkeysPage, page);
         NavItem("匯入匯出", TransferPage, page);
     }
 
-    /// <summary>模組在清單上前面有一個點：亮的是啟用，灰的是停用。</summary>
+    /// <summary>一組模組：灰色小標題，下面是這組的模組。沒有模組的組不顯示。</summary>
+    private void NavGroup(string title, ModuleGroup group, string page)
+    {
+        var first = true;
+        foreach (var module in plugin.Modules)
+        {
+            // 小功能在側邊欄自己一區（NavTweaks），不在「功能」組裡
+            if (module.Group != group || module == plugin.Tweaks) continue;
+
+            if (first)
+            {
+                ImGui.TextDisabled(title);
+                first = false;
+            }
+
+            NavModule(module, page);
+        }
+    }
+
+    /// <summary>
+    /// 模組在清單上前面有一個點。功能：亮的是啟用、灰的是停用。
+    /// 自動流程沒有啟用／停用（一直開著），點改成表示「正在執行」。
+    /// </summary>
     private void NavModule(IModule module, string page)
     {
         var theme = plugin.Config.Theme;
@@ -124,7 +162,10 @@ public class ConfigWindow : Window
         if (ImGui.Selectable($"      {module.Name}##{module.Id}", page == module.Id))
             Page = module.Id;
 
-        var color = plugin.IsEnabled(module) ? theme.Positive : theme.TextMuted;
+        var lit = module.Group == ModuleGroup.Automation
+            ? plugin.IsEnabled(module) && module.Running
+            : plugin.IsEnabled(module);
+        var color = lit ? theme.Positive : theme.TextMuted;
         ImGui.GetWindowDrawList().AddCircleFilled(
             start + new Vector2(dot + ImGui.GetStyle().FramePadding.X, height / 2f), dot, Paint.Color(color));
     }
@@ -135,12 +176,74 @@ public class ConfigWindow : Window
             Page = id;
     }
 
+    // ── 小功能：側邊欄自己一區，第一項是搜尋，下面一個分組一項 ──
+
+    private const string TweakSearchPage = "tweaks:search";
+    private const string TweakGroupPrefix = "tweaks:";
+
+    private static string TweakGroupPage(Tweaks.TweakGroup group) => TweakGroupPrefix + group;
+
+    private static Tweaks.TweakGroup? TweakGroupOf(string page) =>
+        page.StartsWith(TweakGroupPrefix) && Enum.TryParse<Tweaks.TweakGroup>(page[TweakGroupPrefix.Length..], out var group)
+            ? group
+            : null;
+
+    /// <summary>小功能一區：「搜尋」＋每個分組一項，分組前面的點亮 = 這組有開著的小功能。</summary>
+    private void NavTweaks(string page)
+    {
+        var tweaks = plugin.Tweaks;
+        ImGui.TextDisabled("小功能");
+
+        NavItem("      搜尋", TweakSearchPage, page);
+
+        var theme = plugin.Config.Theme;
+        foreach (var group in Enum.GetValues<Tweaks.TweakGroup>())
+        {
+            var items = tweaks.All.Where(t => t.Group == group).ToList();
+            if (items.Count == 0) continue;
+
+            var start = ImGui.GetCursorScreenPos();
+            var height = ImGui.GetTextLineHeight();
+            var dot = height * 0.3f;
+            var on = items.Count(t => t.Enabled);
+
+            if (ImGui.Selectable($"      {group.Name()}##tweaks-{group}", page == TweakGroupPage(group)))
+                Page = TweakGroupPage(group);
+
+            var color = on > 0 ? theme.Positive : theme.TextMuted;
+            ImGui.GetWindowDrawList().AddCircleFilled(
+                start + new Vector2(dot + ImGui.GetStyle().FramePadding.X, height / 2f), dot, Paint.Color(color));
+        }
+    }
+
     private void DrawPage()
     {
         var page = Page;
 
+        // 舊的「小功能」整頁：改成搜尋頁
+        if (page == plugin.Tweaks.Id) page = TweakSearchPage;
+
+        if (page == TweakSearchPage)
+        {
+            PageHeading("小功能：搜尋", "輸入名稱或說明，找出要的小功能。");
+            plugin.Tweaks.DrawSearch();
+            return;
+        }
+
+        if (TweakGroupOf(page) is { } tweakGroup)
+        {
+            PageHeading($"小功能：{tweakGroup.Name()}", "各種掛在遊戲視窗上的小改動，各自開關。");
+            plugin.Tweaks.DrawGroup(tweakGroup);
+            return;
+        }
+
         switch (page)
         {
+            case CorePageId:
+                PageHeading("核心能力", "自動流程和小功能共用的底層能力。平常不需要動，功能執行時會自己借用。");
+                corePage.Draw();
+                return;
+
             case ThemePage:
                 PageHeading("主題", "工具列、面板與右鍵選單的顏色和尺寸。所有模組共用。");
                 DrawThemeTab();
@@ -184,9 +287,12 @@ public class ConfigWindow : Window
         ImGui.Separator();
         ImGui.Spacing();
 
-        var on = plugin.IsEnabled(module);
-        if (ImGui.Checkbox("啟用", ref on))
-            plugin.SetEnabled(module, on);
+        if (module.CanDisable)
+        {
+            var on = plugin.IsEnabled(module);
+            if (ImGui.Checkbox("啟用", ref on))
+                plugin.SetEnabled(module, on);
+        }
 
         if (!plugin.IsEnabled(module))
         {
@@ -197,6 +303,12 @@ public class ConfigWindow : Window
 
         module.DrawHeader();
         ImGui.Spacing();
+
+        if (module.DrawPage != null)
+        {
+            module.DrawPage();
+            return;
+        }
 
         if (!ImGui.BeginTabBar($"tabs{module.Id}")) return;
 

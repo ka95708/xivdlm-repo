@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Plugin.Ipc;
 
 namespace AetherKit.Game;
 
@@ -26,7 +29,8 @@ public static class ConditionEvaluator
 
         foreach (var entry in set.Entries)
         {
-            var met = Test(entry) != entry.Negate;
+            // 讀不到（例如插件沒載入、查詢不存在）當作不成立
+            var met = (TryTest(entry, out var value) && value) != entry.Negate;
 
             if (set.RequireAll && !met) return false;
             if (!set.RequireAll && met) return true;
@@ -35,8 +39,28 @@ public static class ConditionEvaluator
         return set.RequireAll;
     }
 
-    public static bool Test(ConditionEntry entry) => entry.Kind switch
+    /// <summary>讀不到時當作不成立。</summary>
+    public static bool Test(ConditionEntry entry) => TryTest(entry, out var value) && value;
+
+    /// <summary>
+    /// 這一條現在成不成立（還沒套用反轉）。回傳 false = 讀不到：插件提供的查詢不存在或出錯（通常是插件沒載入）。
+    /// </summary>
+    public static bool TryTest(ConditionEntry entry, out bool value)
     {
+        if (entry.Kind == ConditionKind.PluginQuery)
+            return TryQuery(entry.Text, out value);
+
+        if (entry.Kind == ConditionKind.AetherKit)
+            return AetherKitStates.TryRead(entry.Text, out value);
+
+        value = TestGame(entry);
+        return true;
+    }
+
+    private static bool TestGame(ConditionEntry entry) => entry.Kind switch
+    {
+        ConditionKind.PluginLoaded => IsPluginLoaded(entry.Text),
+
         ConditionKind.Job => CurrentJob() == entry.Arg,
         ConditionKind.CombatJob => IsCombatJob(CurrentJob()),
         ConditionKind.CrafterJob => CurrentJob() is >= CrafterFirst and <= CrafterLast,
@@ -74,6 +98,59 @@ public static class ConditionEvaluator
     public static uint CurrentJob() =>
         Services.PlayerState.IsLoaded ? Services.PlayerState.ClassJob.RowId : 0;
 
+    // ── 插件 ──────────────────────────────────────────────
+
+    /// <summary>已載入插件的內部名稱。每幀都會問，所以半秒才跟 Dalamud 重拿一次清單。</summary>
+    private static HashSet<string> loadedPlugins = new(StringComparer.OrdinalIgnoreCase);
+
+    private static DateTime loadedPluginsAt = DateTime.MinValue;
+
+    public static bool IsPluginLoaded(string internalName)
+    {
+        if (string.IsNullOrWhiteSpace(internalName)) return false;
+
+        var now = DateTime.Now;
+        if (now - loadedPluginsAt > TimeSpan.FromSeconds(0.5))
+        {
+            loadedPluginsAt = now;
+            loadedPlugins = Services.PluginInterface.InstalledPlugins
+                .Where(p => p.IsLoaded)
+                .Select(p => p.InternalName)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        return loadedPlugins.Contains(internalName.Trim());
+    }
+
+    private static readonly Dictionary<string, ICallGateSubscriber<bool>> queries = new();
+
+    /// <summary>
+    /// 呼叫插件提供的查詢（不帶參數、回答是或否的 IPC），例如 WrathCombo.GetAutoRotationState。
+    /// 插件沒載入、名稱打錯、回答的不是是或否，都算讀不到。
+    /// </summary>
+    public static bool TryQuery(string name, out bool value)
+    {
+        value = false;
+        name = name.Trim();
+        if (name.Length == 0) return false;
+
+        try
+        {
+            if (!queries.TryGetValue(name, out var subscriber))
+            {
+                subscriber = Services.PluginInterface.GetIpcSubscriber<bool>(name);
+                queries[name] = subscriber;
+            }
+
+            value = subscriber.InvokeFunc();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static bool IsCombatJob(uint job) =>
         job != 0 && job is < CrafterFirst or > GathererLast;
 
@@ -91,6 +168,9 @@ public static class ConditionEvaluator
         ConditionKind.Gathering => "採集中",
         ConditionKind.InCutscene => "過場動畫",
         ConditionKind.InPvP => "PvP",
+        ConditionKind.PluginLoaded => "插件已載入",
+        ConditionKind.PluginQuery => "插件查詢",
+        ConditionKind.AetherKit => "AetherKit 開關",
         _ => kind.ToString()
     };
 }

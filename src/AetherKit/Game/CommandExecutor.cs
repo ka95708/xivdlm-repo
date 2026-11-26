@@ -1,3 +1,4 @@
+using AetherKit.Core;
 using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
@@ -18,7 +19,11 @@ namespace AetherKit.Game;
 /// </summary>
 public unsafe partial class CommandExecutor : IDisposable
 {
-    private readonly Queue<(string Description, Action Run)> queue = new();
+    /// <summary>Run = null 是等待：Wait 秒後才送下一個。</summary>
+    private readonly Queue<(string Description, Action? Run, double Wait)> queue = new();
+
+    /// <summary>等待中：這個時間之前不送下一個。</summary>
+    private DateTime waitUntil = DateTime.MinValue;
 
     public CommandExecutor()
     {
@@ -45,13 +50,38 @@ public unsafe partial class CommandExecutor : IDisposable
             {
                 // 純文字丟給遊戲會變成發言，送到哪個頻道看當下選的是哪個 — 可能是小隊、部隊甚至呼喊。
                 // 打錯字不該變成公開訊息，所以一律擋下來；要說話就寫 /s、/p 這類指令
-                Services.Chat.PrintError($"[AetherKit] 略過不是 / 開頭的指令：{line}");
+                Notify.Reply($"略過不是 / 開頭的指令：{line}", true);
                 continue;
             }
 
-            queue.Enqueue((line, () => Execute(line)));
+            // /wait 1：等 1 秒再執行下一行（不是真的指令，不送出去）
+            if (WaitCommand().Match(line) is { Success: true } wait)
+            {
+                queue.Enqueue((line, null, Seconds(wait.Groups[1].Value)));
+                continue;
+            }
+
+            // 跟遊戲巨集一樣，行尾的 <wait.1> 是執行完等 1 秒
+            var suffix = WaitSuffix().Match(line);
+            var text = suffix.Success ? line[..suffix.Index].TrimEnd() : line;
+
+            queue.Enqueue((text, () => Execute(text), 0));
+            if (suffix.Success)
+                queue.Enqueue((suffix.Value, null, Seconds(suffix.Groups[1].Value)));
         }
     }
+
+    [GeneratedRegex(@"^/wait(?:\s+(\d+(?:\.\d+)?))?\s*$", RegexOptions.IgnoreCase)]
+    private static partial Regex WaitCommand();
+
+    [GeneratedRegex(@"\s*<wait\.(\d+(?:\.\d+)?)>\s*$", RegexOptions.IgnoreCase)]
+    private static partial Regex WaitSuffix();
+
+    /// <summary>等幾秒：沒寫就 1 秒，最多 60 秒。</summary>
+    private static double Seconds(string text) =>
+        double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value)
+            ? Math.Clamp(value, 0, 60)
+            : 1;
 
     /// <summary>有內容的行：去掉空白行與 // 開頭的註解。</summary>
     public static IEnumerable<string> Lines(string command)
@@ -86,12 +116,12 @@ public unsafe partial class CommandExecutor : IDisposable
         {
             case HotbarSlotType.GearSet:
                 var gearset = (int)source.Id;
-                queue.Enqueue(($"換套裝 #{gearset + 1}", () => EquipGearset(gearset)));
+                queue.Enqueue(($"換套裝 #{gearset + 1}", () => EquipGearset(gearset), 0));
                 return true;
 
             case HotbarSlotType.Emote:
                 var emote = (ushort)source.Id;
-                queue.Enqueue(($"情感動作 #{emote}", () => ExecuteEmote(emote)));
+                queue.Enqueue(($"情感動作 #{emote}", () => ExecuteEmote(emote), 0));
                 return true;
 
             default:
@@ -103,8 +133,15 @@ public unsafe partial class CommandExecutor : IDisposable
     {
         if (queue.Count == 0) return;
         if (!Services.ClientState.IsLoggedIn) return;
+        if (DateTime.Now < waitUntil) return;
 
-        var (description, run) = queue.Dequeue();
+        var (description, run, wait) = queue.Dequeue();
+        if (run == null)
+        {
+            waitUntil = DateTime.Now.AddSeconds(wait);
+            return;
+        }
+
         try
         {
             Services.Log.Debug($"執行：{description}");

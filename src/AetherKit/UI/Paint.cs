@@ -46,7 +46,7 @@ public static class Paint
     /// 工具列和面板用的都是這個。tint 是底色（例如職能色），null 就用主題預設。
     /// </summary>
     public static bool Item(string id, ActionItem item, Vector2 size, ItemStyle style,
-        Vector4? tint = null, bool enabled = true)
+        Vector4? tint = null, bool enabled = true, bool? toggle = null)
     {
         var theme = Theme;
 
@@ -84,11 +84,28 @@ public static class Paint
 
         var truncated = showText && DrawLabels(draw, item, min, max, cursor, enabled);
 
+        // 開關：左邊一條，開著是亮色、關著是灰色，沒有圖示也分得出是開關、開還是關
+        if (toggle is { } itemOn)
+            draw.AddRectFilled(min, new Vector2(min.X + ToggleBar, max.Y), ToggleColor(itemOn), theme.Rounding, ImDrawFlags.RoundCornersLeft);
+
         // 看不到全名就用 tooltip 補回來，截斷才不會真的損失資訊
         if (hovered && truncated)
             ImGui.SetTooltip(string.IsNullOrEmpty(item.SubLabel) ? item.Label : $"{item.Label}\n{item.SubLabel}");
 
         return clicked;
+    }
+
+    /// <summary>面板的一格剛好放得下圖示、名稱與副標要多寬（跟 Item 的排法一樣）。</summary>
+    public static float ItemWidth(ActionItem item)
+    {
+        var theme = Theme;
+        var text = ImGui.CalcTextSize(item.Label).X;
+
+        if (!string.IsNullOrEmpty(item.SubLabel))
+            text = MathF.Max(text, ImGui.CalcTextSize(item.SubLabel).X * SubLabelScale);
+
+        var icon = item.IconId > 0 ? theme.IconSize + theme.Gap : 0f;
+        return theme.Padding * 2 + icon + text + 1f;
     }
 
     /// <summary>回傳 true 代表有字被截斷。</summary>
@@ -131,7 +148,8 @@ public static class Paint
     /// opensPanel = 會展開面板的卡片，右邊多一個 ▾，跟直接執行的按鈕分得出來。
     /// open = 它的面板正開著，保持標亮，滑鼠移到面板上時還看得出是從哪張卡片開的。
     /// </summary>
-    public static bool Chip(string id, ActionItem item, ItemStyle style, bool opensPanel, bool open)
+    public static bool Chip(string id, ActionItem item, ItemStyle style, bool opensPanel, bool open, bool dimmed = false,
+        bool? toggle = null)
     {
         var theme = Theme;
         var size = new Vector2(ChipWidth(item, style, opensPanel), theme.BarHeight);
@@ -147,7 +165,7 @@ public static class Paint
 
         draw.AddRectFilled(min, max, Color(open ? theme.ChipOpen : theme.ChipBackground), rounding);
 
-        if (hovered || active)
+        if (!dimmed && (hovered || active))
             draw.AddRectFilled(min, max, Color(active ? theme.RowActive : theme.RowHover), rounding);
 
         if (theme.BorderWidth > 0)
@@ -180,10 +198,34 @@ public static class Paint
             Chevron(draw, new Vector2(max.X - ChipPadding - ChevronSize / 2f, (min.Y + max.Y) / 2f),
                 Color(open ? theme.Accent : theme.TextSecondary));
 
+        // 開關：底下一條，開著是亮色、關著是灰色，沒有圖示也分得出是開關、開還是關
+        if (toggle is { } chipOn)
+            draw.AddRectFilled(new Vector2(min.X + rounding, max.Y - ToggleBar), new Vector2(max.X - rounding, max.Y), ToggleColor(chipOn));
+
+        // 不能按：蓋一層半透明的底色，整張淡掉
+        if (dimmed)
+        {
+            var veil = theme.BarBackground;
+            draw.AddRectFilled(min, max, Color(new Vector4(veil.X, veil.Y, veil.Z, 0.6f)), rounding);
+        }
+
         return clicked;
     }
 
     private const float ChevronSize = 7f;
+
+    /// <summary>開關那條的粗細。</summary>
+    private const float ToggleBar = 3f;
+
+    /// <summary>開關那條的顏色：開著用正面色，關著用淡灰。</summary>
+    private static uint ToggleColor(bool on)
+    {
+        var theme = Theme;
+        if (on) return Color(theme.Positive);
+
+        var off = theme.TextSecondary;
+        return Color(new Vector4(off.X, off.Y, off.Z, off.W * 0.45f));
+    }
 
     /// <summary>朝下的小三角，中心在 center。</summary>
     private static void Chevron(ImDrawListPtr draw, Vector2 center, uint color)
@@ -288,12 +330,36 @@ public static class Paint
     /// 點擊範圍往角落外面多延伸一點：裡面被捲動用的子視窗蓋住，
     /// 範圍全放在裡面的話滑鼠點不到。回傳這一幀拖了多少；fit = 連點兩下，要縮到剛好包住內容。
     /// </summary>
+    /// <summary>拖曳調整大小時一格多少：寬高都是這個的倍數，分區、面板的邊比較容易對齊。</summary>
+    private static float SizeStep => MathF.Max(1f, Theme.SizeStep);
+
+    /// <summary>這次拖曳還沒用掉的零頭（滑鼠移動不到一格的部分累積起來）。</summary>
+    private static Vector2 snapRest;
+
+    /// <summary>
+    /// 拖曳後的新大小，對齊到 SizeStep 的倍數。滑鼠每幀只動一點點，所以把不到一格的零頭留著，累積夠了才跳一格。
+    /// </summary>
+    public static Vector2 SnapSize(Vector2 current, Vector2 delta)
+    {
+        var target = current + delta + snapRest;
+        var snapped = new Vector2(MathF.Round(target.X / SizeStep) * SizeStep, MathF.Round(target.Y / SizeStep) * SizeStep);
+        snapRest = target - snapped;
+        return snapped;
+    }
+
     public static Vector2 ResizeGrip(string id, Vector2 corner, out bool fit)
     {
         var theme = Theme;
 
+        // 放在自己的小子視窗裡：子視窗後建的蓋在先建的上面，旁邊、右下的分區（也是子視窗）才不會擋住把手
         ImGui.SetCursorScreenPos(corner - new Vector2(GripArm));
+        ImGui.BeginChild($"{id}##host", new Vector2(GripSize), false,
+            ImGuiWindowFlags.NoBackground | ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
         ImGui.InvisibleButton(id, new Vector2(GripSize));
+
+        // 剛按下：上一次拖曳剩下的零頭不要帶過來
+        if (ImGui.IsItemActivated())
+            snapRest = Vector2.Zero;
 
         var active = ImGui.IsItemActive();
         var hovered = ImGui.IsItemHovered();
@@ -311,10 +377,17 @@ public static class Paint
 
         fit = hovered && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left);
 
-        return active && ImGui.IsMouseDragging(ImGuiMouseButton.Left)
+        var drag = active && ImGui.IsMouseDragging(ImGuiMouseButton.Left)
             ? ImGui.GetIO().MouseDelta
             : Vector2.Zero;
+
+        ImGui.EndChild();
+        return drag;
     }
+
+    /// <summary>「縮到剛好」的大小往上取到 SizeStep 的倍數：內容放得下，邊也跟拖曳的一樣對齊。</summary>
+    public static Vector2 CeilSize(Vector2 size) =>
+        new(MathF.Ceiling(size.X / SizeStep - 0.01f) * SizeStep, MathF.Ceiling(size.Y / SizeStep - 0.01f) * SizeStep);
 
     /// <summary>
     /// 設定視窗裡的小節標題。設定視窗用的是 Dalamud 原生樣式（跟其他插件一致），

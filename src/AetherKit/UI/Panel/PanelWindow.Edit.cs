@@ -59,7 +59,7 @@ public partial class PanelWindow
 
         if (delta == Vector2.Zero) return;
 
-        SetPanelSize(config, shown + delta);
+        SetPanelSize(config, Paint.SnapSize(shown, delta));
     }
 
     private void SetPanelSize(PanelConfig config, Vector2 size)
@@ -88,23 +88,32 @@ public partial class PanelWindow
 
         if (delta == Vector2.Zero) return;
 
-        section.Width = MathF.Max(placed.Size.X + delta.X, section.ItemWidth);
-        section.Height = MathF.Max(placed.Size.Y + delta.Y, Theme.RowHeight);
+        var size = Paint.SnapSize(placed.Size, delta);
+        section.Width = MathF.Max(size.X, MinSectionWidth(section, section.MinItemWidth));
+        section.Height = MathF.Max(size.Y, Theme.RowHeight);
         plugin.Save();
     }
 
     /// <summary>面板縮到剛好包住所有欄；內容比螢幕還大時就到螢幕邊緣為止，其餘捲動。</summary>
-    private void FitPanel(PanelConfig config, Flow flow) => SetPanelSize(config, flow.Size);
+    private void FitPanel(PanelConfig config, Flow flow) => SetPanelSize(config, Paint.CeilSize(flow.Size));
 
     /// <summary>分區縮到剛好包住內容：實際用到的欄數，與內容的高度。</summary>
     private void FitSection(PanelSection section, SectionLayout layout)
     {
-        var right = section.ItemWidth;
+        // 格子會撐滿分區，所以照「用了幾欄 × 最小格寬」算，才縮得回去
+        var used = new HashSet<float>();
         foreach (var part in layout.Parts)
-            right = MathF.Max(right, part.Offset.X + section.ItemWidth);
+        {
+            if (part.Item != null)
+                used.Add(part.Offset.X);
+        }
 
-        section.Width = right;
-        section.Height = MathF.Max(layout.ContentHeight, Theme.RowHeight);
+        var count = FixedColumns(section) is > 0 and var fixedCount ? fixedCount : Math.Max(1, used.Count);
+        var size = Paint.CeilSize(new Vector2(
+            section.MinItemWidth * count + Theme.Gap * (count - 1),
+            MathF.Max(layout.ContentHeight, Theme.RowHeight)));
+        section.Width = size.X;
+        section.Height = size.Y;
         plugin.Save();
     }
 
@@ -256,6 +265,8 @@ public partial class PanelWindow
     /// <summary>自訂項目可以拖曳排序（可跨分區），右鍵開項目選單。</summary>
     private void DrawRowEditing(PanelSection section, int index)
     {
+        if (index < 0 || index >= section.Items.Count) return;
+
         var item = section.Items[index];
         var label = item.Current.Label;
 
@@ -407,14 +418,21 @@ public partial class PanelWindow
             }
         }
 
-        ImGui.SetNextItemWidth(150);
-
-        var itemWidth = section.ItemWidth;
-        if (ImGui.SliderFloat("項目寬度", ref itemWidth, 80f, 400f, "%.0f"))
+        if (!section.HasGroups)
         {
-            section.ItemWidth = itemWidth;
-            section.Width = MathF.Max(section.Width, itemWidth);
-            plugin.Save();
+            ImGui.SetNextItemWidth(150);
+            if (ImGui.BeginCombo("一排幾欄", section.ColumnCount == 0 ? "自動" : $"{section.ColumnCount} 欄"))
+            {
+                for (var count = 0; count <= 6; count++)
+                {
+                    if (!ImGui.Selectable(count == 0 ? "自動（照分區寬度）" : $"{count} 欄", count == section.ColumnCount)) continue;
+
+                    section.ColumnCount = count;
+                    plugin.Save();
+                }
+
+                ImGui.EndCombo();
+            }
         }
 
         if (section.HasGroups && section.RoleColumns.Count > 0 && Menu.Item("職能擺法恢復預設"))

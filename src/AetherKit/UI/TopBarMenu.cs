@@ -1,3 +1,4 @@
+using AetherKit.Game;
 using System;
 using System.Collections.Generic;
 using Dalamud.Bindings.ImGui;
@@ -25,6 +26,7 @@ public static class TopBarMenu
 
         var changed = false;
         var isButton = item.Kind == ItemKind.Button;
+        var isToggle = item.Kind == ItemKind.Toggle;
         var name = item.Current.Label;
 
         Menu.Header(string.IsNullOrEmpty(name) ? "工具列項目" : name);
@@ -36,9 +38,15 @@ public static class TopBarMenu
         Menu.Section(isButton && item.Cycles ? $"狀態 {item.StateIndex + 1} 設定" : "外觀");
         changed |= ItemPopup.DrawFields(plugin, item.Current, subLabel: false, command: isButton);
 
+        if (isToggle)
+            changed |= DrawToggle(plugin, item);
+
         Menu.Section("工具列設定");
         changed |= DrawKind(item);
         changed |= DrawStyle(item);
+
+        if (item.Kind != ItemKind.Panel)
+            changed |= DrawEnableCondition(plugin, item);
 
         // 面板卡片的快捷鍵是開關它的面板
         changed |= ItemPopup.DrawHotkey(plugin, item, isButton ? "快捷鍵" : "快捷鍵（開關面板）");
@@ -54,6 +62,14 @@ public static class TopBarMenu
         }
 
         Menu.Separator();
+
+        if (Menu.Item("複製這個項目"))
+        {
+            // 放在右邊，快捷鍵不複製（免得兩個一起觸發）
+            var index = items.IndexOf(item);
+            items.Insert(index + 1, item.Duplicate());
+            changed = true;
+        }
 
         if (Menu.Danger("刪除這個項目"))
         {
@@ -89,6 +105,141 @@ public static class TopBarMenu
             changed = true;
         }
 
+        ImGui.SameLine();
+        if (ImGui.RadioButton("開關", item.Kind == ItemKind.Toggle))
+        {
+            item.Kind = ItemKind.Toggle;
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    /// <summary>
+    /// 開關：打開的指令、關掉的指令、狀態來源。
+    /// 狀態來源「自己記」= 按一次換一次；「跟著遊戲或插件」= 照那一條條件顯示，從別的地方切換也會同步。
+    /// </summary>
+    public static bool DrawToggle(Plugin plugin, StatefulItem item)
+    {
+        var changed = false;
+        var theme = plugin.Config.Theme;
+
+        Menu.Section("開關");
+
+        var on = item.Current.Command;
+        if (ItemPopup.DrawCommand(plugin, "打開的指令", ref on))
+        {
+            item.Current.Command = on;
+            changed = true;
+        }
+
+        var off = item.OffCommand;
+        if (ItemPopup.DrawCommand(plugin, "關掉的指令", ref off))
+        {
+            item.OffCommand = off;
+            changed = true;
+        }
+
+        ItemPopup.DrawCommandHelp(plugin, "開著時按下執行關掉的指令，關著時執行打開的指令；關著時自動變灰");
+
+        Menu.Section("狀態來源");
+
+        if (ImGui.RadioButton("自己記", item.StateSource == null))
+        {
+            item.StateSource = null;
+            changed = true;
+        }
+
+        ImGui.SameLine();
+        if (ImGui.RadioButton("跟著遊戲、插件或 AetherKit", item.StateSource != null) && item.StateSource == null)
+        {
+            item.StateSource = new ConditionEntry { Kind = ConditionKind.AetherKit };
+            changed = true;
+        }
+
+        if (item.StateSource is { } source)
+        {
+            var before = source.Kind == ConditionKind.AetherKit ? source.Text : null;
+            ConditionEditor.DrawEntry(plugin, source, removable: false);
+            ImGui.TextColored(theme.TextSecondary, "這一條成立 = 開著（勾反轉就反過來）");
+
+            if (source.Kind == ConditionKind.AetherKit && source.Text != before)
+                changed |= FillAetherKitCommands(item, before, source.Text);
+        }
+        else
+        {
+            var isOn = item.IsOn;
+            if (ImGui.Checkbox("現在是開著", ref isOn))
+            {
+                item.IsOn = isOn;
+                changed = true;
+            }
+
+            ImGui.TextColored(theme.TextSecondary, "按一次換一次；從別的地方切換的話，在這裡改回來");
+        }
+
+        var state = ToolbarItemState.IsOn(item);
+        ImGui.TextColored(state == true ? theme.Positive : theme.TextSecondary,
+            state switch { true => "目前：開著", false => "目前：關著", _ => "目前：讀不到（按鈕會變灰、不能按）" });
+
+        return changed;
+    }
+
+    /// <summary>
+    /// 狀態來源選了 AetherKit 開關：把它的打開／關掉指令填進按鈕。
+    /// 只在指令還是空的、或還是上一個開關帶進來的指令時才填，自己改過的不蓋掉。
+    /// </summary>
+    private static bool FillAetherKitCommands(StatefulItem item, string? oldKey, string newKey)
+    {
+        if (AetherKitStates.Find(newKey) is not { } state || state.OnCommand.Length == 0) return false;
+
+        var old = oldKey == null ? null : AetherKitStates.Find(oldKey);
+        bool Replaceable(string command, string? previous) => command.Trim().Length == 0 || command == previous;
+
+        if (!Replaceable(item.Current.Command, old?.OnCommand) || !Replaceable(item.OffCommand, old?.OffCommand)) return false;
+
+        item.Current.Command = state.OnCommand;
+        item.OffCommand = state.OffCommand;
+        return true;
+    }
+
+    /// <summary>可以按的條件：選一個條件組，不成立時變灰、不能按（或藏起來）。工具列卡片、面板項目共用。</summary>
+    public static bool DrawEnableCondition(Plugin plugin, StatefulItem item)
+    {
+        var changed = false;
+        var set = plugin.Config.FindConditionSet(item.EnableConditionSetId);
+
+        ImGui.SetNextItemWidth(150);
+        if (ImGui.BeginCombo("可以按的條件", set?.Name ?? "一直可以按"))
+        {
+            if (ImGui.Selectable("一直可以按", item.EnableConditionSetId == Guid.Empty))
+            {
+                item.EnableConditionSetId = Guid.Empty;
+                changed = true;
+            }
+
+            foreach (var candidate in plugin.Config.ConditionSets)
+            {
+                if (!ImGui.Selectable(candidate.Name, candidate.Id == item.EnableConditionSetId)) continue;
+
+                item.EnableConditionSetId = candidate.Id;
+                changed = true;
+            }
+
+            ImGui.EndCombo();
+        }
+
+        if (set != null)
+        {
+            var hide = item.HideWhenDisabled;
+            if (ImGui.Checkbox("不成立時藏起來（不然是變灰）", ref hide))
+            {
+                item.HideWhenDisabled = hide;
+                changed = true;
+            }
+        }
+
+        ImGui.TextColored(plugin.Config.Theme.TextSecondary, "條件組在工具列設定的「條件組」分頁新增，可以用「插件已載入」");
         return changed;
     }
 

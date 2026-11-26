@@ -104,12 +104,31 @@ public sealed class ToolbarModule : IModule
     {
         get
         {
+            yield return new ModuleTab(LayoutTab, DrawLayout);
             yield return new ModuleTab(CursorTab, cursorSettings.Draw);
             yield return new ModuleTab(ConditionsTab, Conditions.Draw);
         }
     }
 
+    public const string LayoutTab = "版面";
+
     public const string CursorTab = "游標提示";
+
+    /// <summary>版面：拖曳調整面板、分區大小時一格多少。</summary>
+    private void DrawLayout()
+    {
+        ModuleUi.Section("調整大小");
+
+        var step = (int)plugin.Config.Theme.SizeStep;
+        ImGui.SetNextItemWidth(200);
+        if (ImGui.SliderInt("一格多少像素", ref step, 1, 40))
+        {
+            plugin.Config.Theme.SizeStep = step;
+            plugin.Save();
+        }
+
+        ModuleUi.Note("編輯模式下拖曳面板、分區右下角的把手，寬高會停在這個數字的倍數，邊比較容易對齊；連點兩下縮到剛好時也一樣。1 = 不對齊。");
+    }
     public const string ConditionsTab = "條件組";
 
     public bool HasSettings(Configuration config) =>

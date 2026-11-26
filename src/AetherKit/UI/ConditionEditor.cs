@@ -111,7 +111,7 @@ public class ConditionEditor
         {
             ImGui.PushID(i);
 
-            if (!DrawEntry(set.Entries[i]))
+            if (!DrawEntry(plugin, set.Entries[i]))
             {
                 set.Entries.RemoveAt(i);
                 plugin.Save();
@@ -142,11 +142,17 @@ public class ConditionEditor
         }
     }
 
-    /// <summary>回傳 false 代表使用者按了移除。</summary>
-    private bool DrawEntry(ConditionEntry entry)
+    /// <summary>
+    /// 一條條件：種類、反轉、移除，需要參數的再多一行。條件組、工具列開關的狀態來源共用。
+    /// 回傳 false 代表使用者按了移除（removable = false 時不會有移除按鈕）。
+    /// </summary>
+    public static bool DrawEntry(Plugin plugin, ConditionEntry entry, bool removable = true)
     {
-        var met = ConditionEvaluator.Test(entry) != entry.Negate;
-        ImGui.TextColored(met ? Theme.Positive : Theme.TextMuted, met ? "●" : "○");
+        var theme = plugin.Config.Theme;
+        var known = ConditionEvaluator.TryTest(entry, out var value);
+        var met = (known && value) != entry.Negate;
+        ImGui.TextColored(met ? theme.Positive : theme.TextMuted, known ? (met ? "●" : "○") : "？");
+        if (!known && ImGui.IsItemHovered()) ImGui.SetTooltip("讀不到：插件沒載入，或查詢名稱不對");
         ImGui.SameLine();
 
         var kind = Array.IndexOf(Kinds, entry.Kind);
@@ -160,6 +166,7 @@ public class ConditionEditor
 
                 entry.Kind = Kinds[i];
                 entry.Arg = 0;
+                entry.Text = string.Empty;
                 plugin.Save();
             }
 
@@ -175,24 +182,75 @@ public class ConditionEditor
             plugin.Save();
         }
 
-        ImGui.SameLine();
-        var keep = !ImGui.SmallButton("移除");
+        var keep = true;
+        if (removable)
+        {
+            ImGui.SameLine();
+            keep = !ImGui.SmallButton("移除");
+        }
 
         switch (entry.Kind)
         {
             case ConditionKind.Job:
-                DrawJobPicker(entry);
+                DrawJobPicker(plugin, entry);
                 break;
 
             case ConditionKind.Territory:
-                DrawTerritoryPicker(entry);
+                DrawTerritoryPicker(plugin, entry);
+                break;
+
+            case ConditionKind.PluginLoaded:
+                DrawText(plugin, entry, "插件名稱", "例如 WrathCombo、RotationSolver（插件的內部名稱）");
+                break;
+
+            case ConditionKind.PluginQuery:
+                DrawText(plugin, entry, "查詢名稱", "插件提供、回答是或否的查詢，例如 WrathCombo.GetAutoRotationState");
+                break;
+
+            case ConditionKind.AetherKit:
+                DrawAetherKitPicker(plugin, entry);
                 break;
         }
 
         return keep;
     }
 
-    private void DrawJobPicker(ConditionEntry entry)
+    /// <summary>AetherKit 開關：照分組列出（自動流程、模組、小功能、核心能力、工具列）。</summary>
+    private static void DrawAetherKitPicker(Plugin plugin, ConditionEntry entry)
+    {
+        ImGui.Indent();
+
+        var current = AetherKitStates.Find(entry.Text) is { } chosen
+            ? $"{chosen.Group}：{chosen.Name}"
+            : entry.Text.Length == 0 ? "（未選擇）" : $"{entry.Text}（找不到）";
+
+        ImGui.SetNextItemWidth(300);
+        // 標籤要有自己的 ID：工具列選單裡已經有一個叫「開關」的選項（按鈕類型），同 ID 會吃掉點擊
+        if (ImGui.BeginCombo("跟著哪一個##aetherkit-state", current, ImGuiComboFlags.HeightLarge))
+        {
+            string? group = null;
+            foreach (var state in AetherKitStates.All())
+            {
+                if (state.Group != group)
+                {
+                    if (group != null) ImGui.Separator();
+                    ImGui.TextDisabled(state.Group);
+                    group = state.Group;
+                }
+
+                if (!ImGui.Selectable($"{state.Name}##{state.Key}", state.Key == entry.Text)) continue;
+
+                entry.Text = state.Key;
+                plugin.Save();
+            }
+
+            ImGui.EndCombo();
+        }
+
+        ImGui.Unindent();
+    }
+
+    private static void DrawJobPicker(Plugin plugin, ConditionEntry entry)
     {
         var sheet = Services.Data.GetExcelSheet<ClassJob>();
         if (sheet == null) return;
@@ -223,7 +281,7 @@ public class ConditionEditor
         ImGui.Unindent();
     }
 
-    private void DrawTerritoryPicker(ConditionEntry entry)
+    private static void DrawTerritoryPicker(Plugin plugin, ConditionEntry entry)
     {
         ImGui.Indent();
 
@@ -245,6 +303,24 @@ public class ConditionEditor
 
         ImGui.SameLine();
         ImGui.TextDisabled(TerritoryName(entry.Arg));
+        ImGui.Unindent();
+    }
+
+    private static void DrawText(Plugin plugin, ConditionEntry entry, string label, string hint)
+    {
+        ImGui.Indent();
+
+        var text = entry.Text;
+        ImGui.SetNextItemWidth(260);
+        if (ImGui.InputTextWithHint(label, hint, ref text, 128))
+        {
+            entry.Text = text.Trim();
+            plugin.Save();
+        }
+
+        if (entry.Kind == ConditionKind.PluginLoaded && entry.Text.Length > 0 && !ConditionEvaluator.IsPluginLoaded(entry.Text))
+            ImGui.TextDisabled("目前沒有載入這個名稱的插件（名稱要跟插件的內部名稱一樣）");
+
         ImGui.Unindent();
     }
 
